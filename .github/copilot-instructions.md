@@ -25,7 +25,7 @@ SFPLiberate is a Web Bluetooth companion app for the Ubiquiti SFP Wizard (UACC-S
 ## Key Files & Responsibilities
 
 ### Frontend (`frontend/`)
-- **`script.js`** (575 lines): BLE state machine, notification handler, SFF-8472 EEPROM parser, API client
+- **`script.js`**: BLE state machine, notification handler, SFF-8472 EEPROM parser, API client
   - `handleNotifications()`: Core dispatcher—heuristic text vs binary detection for incoming BLE data
   - `parseAndDisplaySfpData()`: Client-side SFF-8472 parser (bytes 20-36 vendor, 40-56 model, 68-84 serial)
   - Safari compatibility: `acceptAllDevices` fallback, `DataView → Uint8Array` conversion for broad support
