@@ -157,6 +157,11 @@ Week 12:    Phase 7 - Polish (Stories 24-25)
 
 ## 🚀 Quick Start (After Implementation)
 
+### Current UI (as implemented)
+
+- Dashboard (`/`): modern Cards with Connection status, BLE control, and an Activity panel using shadcn Tabs (Log / DDM / Events).
+- Modules (`/modules`): module library table with write confirmation dialog.
+
 ### Standalone Mode (Docker)
 ```bash
 # Clone repo (single main branch)

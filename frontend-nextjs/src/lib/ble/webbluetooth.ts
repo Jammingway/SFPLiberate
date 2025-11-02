@@ -20,7 +20,6 @@ export async function requestDeviceWithFallback(serviceUuid: string) {
 }
 
 export async function connectDirect(profile: SfpProfile) {
-  // @ts-expect-error Web Bluetooth typings not included by default
   const device = await requestDeviceWithFallback(profile.serviceUuid);
   device.addEventListener('gattserverdisconnected', () => {
     // No-op; consumer can attach their own callbacks

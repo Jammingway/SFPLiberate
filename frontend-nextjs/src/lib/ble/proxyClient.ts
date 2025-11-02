@@ -1,9 +1,4 @@
-import type {
-  GattLikeCharacteristic,
-  GattLikeServer,
-  ProxyRequestOptions,
-  UUID,
-} from './types';
+import type { GattLikeCharacteristic, GattConnection, ProxyRequestOptions, UUID } from './types';
 
 // Minimal base64 helpers
 const b64decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -133,12 +128,16 @@ export class BLEProxyClient {
     return {
       name: this.device?.name,
       gatt: {
-        connect: async (): Promise<GattLikeServer> => ({
+        connect: async (): Promise<GattConnection> => ({
           getPrimaryService: async (_uuid: UUID) => ({
             getCharacteristic: async (charUuid: UUID): Promise<GattLikeCharacteristic> => ({
               uuid: charUuid,
-              writeValue: async (data: ArrayBuffer | Uint8Array) => self.writeCharacteristic(charUuid, new Uint8Array(data as ArrayBuffer)),
-              writeValueWithoutResponse: async (data: ArrayBuffer | Uint8Array) => self.writeCharacteristic(charUuid, new Uint8Array(data as ArrayBuffer), false),
+              writeValue: async (data: ArrayBuffer | Uint8Array) => {
+                await self.writeCharacteristic(charUuid, new Uint8Array(data as ArrayBuffer));
+              },
+              writeValueWithoutResponse: async (data: ArrayBuffer | Uint8Array) => {
+                await self.writeCharacteristic(charUuid, new Uint8Array(data as ArrayBuffer), false);
+              },
               startNotifications: async () => {
                 await self.subscribe(charUuid);
                 return {
@@ -161,9 +160,9 @@ export class BLEProxyClient {
     return this.sendAndWait('subscribe', { type: 'subscribe', characteristic_uuid: characteristicUuid });
   }
 
-  async writeCharacteristic(characteristicUuid: UUID, data: Uint8Array, withResponse = true) {
+  async writeCharacteristic(characteristicUuid: UUID, data: Uint8Array, withResponse = true): Promise<void> {
     const b64 = b64encode(data);
-    return this.sendAndWait('write', { type: 'write', characteristic_uuid: characteristicUuid, data: b64, with_response: withResponse });
+    await this.sendAndWait('write', { type: 'write', characteristic_uuid: characteristicUuid, data: b64, with_response: withResponse });
   }
 }
 
@@ -172,4 +171,3 @@ export function buildDefaultProxyWsUrl(path = '/api/v1/ble/ws') {
   const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8080';
   return `${proto}//${host}${path}`;
 }
-

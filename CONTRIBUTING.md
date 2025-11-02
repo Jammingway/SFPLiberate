@@ -65,11 +65,19 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend Development
-The frontend runs as a Next.js app inside `frontend-nextjs/`. To test via Docker:
+The frontend is a Next.js app in `frontend-nextjs/`.
+
+Local (without Docker):
 ```bash
-# Rebuild just the frontend container
-docker-compose up --build frontend
+cd frontend-nextjs
+npm install
+npm run dev
+# or npm run build
 ```
+
+Pages:
+- `/` Dashboard (Connection, BLE Control, Activity Tabs)
+- `/modules` Module Library (write confirmation)
 
 ### Database Access
 ```bash
