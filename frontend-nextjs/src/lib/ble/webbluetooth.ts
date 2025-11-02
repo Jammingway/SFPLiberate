@@ -58,7 +58,9 @@ export async function writeChunks(
   chunkSize = 20,
   delayMs = 10,
   withResponse = false,
+  onProgress?: (writtenChunks: number, totalChunks: number) => void,
 ) {
+  const totalChunks = Math.ceil(data.length / chunkSize);
   for (let i = 0; i < data.length; i += chunkSize) {
     const chunk = data.subarray(i, Math.min(i + chunkSize, data.length));
     if (withResponse) {
@@ -66,6 +68,8 @@ export async function writeChunks(
     } else {
       await writeCharacteristic.writeValueWithoutResponse(chunk);
     }
+    const written = Math.ceil((i + chunk.length) / chunkSize);
+    if (onProgress) onProgress(written, totalChunks);
     if (delayMs > 0 && i + chunkSize < data.length) {
       await new Promise((r) => setTimeout(r, delayMs));
     }
@@ -76,4 +80,3 @@ export function isWebBluetoothAvailable(): boolean {
   // @ts-expect-error Web Bluetooth typings not included by default
   return !!(navigator && navigator.bluetooth && typeof navigator.bluetooth.requestDevice === 'function');
 }
-

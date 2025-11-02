@@ -119,7 +119,14 @@ export async function writeSfpFromBuffer(buf: ArrayBuffer) {
   await sendBleCommand('[POST] /sif/write');
   const data = new Uint8Array(buf);
   if (!active) throw new Error('Not connected');
-  await writeChunks(active.write, data, 20, 10, false);
+  const totalChunks = Math.ceil(data.length / 20);
+  logLine(`Writing ${data.length} bytes in ${totalChunks} chunks...`);
+  await writeChunks(active.write, data, 20, 10, false, (written, total) => {
+    if (written === total || written % 10 === 0) {
+      const pct = Math.round((written / total) * 100);
+      logLine(`Write progress: ${pct}% (${written}/${total} chunks)`);
+    }
+  });
 }
 
 export async function sendBleCommand(command: string) {

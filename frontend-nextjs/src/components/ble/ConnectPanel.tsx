@@ -2,7 +2,7 @@
 import { useEffect, useSyncExternalStore, useState } from 'react';
 import { ConnectionModeSelector } from './ConnectionModeSelector';
 import type { ConnectionMode } from '@/lib/ble/types';
-import { connect, requestSfpRead, saveCurrentModule, listModules, connectViaProxyAddress } from '@/lib/ble/manager';
+import { connect, requestSfpRead, saveCurrentModule, listModules, connectViaProxyAddress, writeSfpFromModuleId } from '@/lib/ble/manager';
 import { getBleState, subscribe } from '@/lib/ble/store';
 import { ProxyDiscovery } from '@/components/ble/ProxyDiscovery';
 import { ConnectionStatus } from '@/components/ble/ConnectionStatus';
@@ -58,6 +58,27 @@ export function ConnectPanel() {
       const list = await listModules();
       setModules(list);
       alert('Saved');
+    } catch (e: any) {
+      alert(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onWriteModule = async (id: number) => {
+    const confirmed = window.confirm(
+      'WARNING: Writing EEPROM data can permanently damage your SFP module if incorrect data is used.\n\n' +
+        'Before proceeding:\n' +
+        '✓ Ensure you have backed up the original module data\n' +
+        '✓ Verify this is the correct module profile\n' +
+        '✓ Use test/non-critical modules first\n\n' +
+        'Do you want to continue?'
+    );
+    if (!confirmed) return;
+    try {
+      setBusy(true);
+      await writeSfpFromModuleId(id);
+      alert('Write flow completed. Consider reading back to verify.');
     } catch (e: any) {
       alert(e?.message || String(e));
     } finally {
@@ -128,10 +149,17 @@ export function ConnectPanel() {
         </div>
         <div style={{ flex: 1 }}>
           <strong>Modules</strong>
-          <ul>
+          <ul className="grid gap-1">
             {modules?.map((m) => (
-              <li key={m.id}>
-                #{m.id} {m.vendor} {m.model} {m.serial}
+              <li key={m.id} className="flex items-center justify-between">
+                <div>
+                  #{m.id} {m.vendor} {m.model} {m.serial}
+                </div>
+                <div className="ml-3">
+                  <button onClick={() => onWriteModule(m.id)} disabled={busy || !state.connected}>
+                    Write
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
