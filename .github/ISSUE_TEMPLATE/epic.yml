@@ -1,0 +1,118 @@
+name: Epic
+description: Create a new epic to track a large initiative
+title: "[EPIC] "
+labels: ["epic", "planning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Epic Template
+        Use this template to create a new epic that groups related user stories.
+
+  - type: input
+    id: epic-id
+    attributes:
+      label: Epic ID
+      description: Unique identifier for this epic (e.g., EPIC-001)
+      placeholder: EPIC-001
+    validations:
+      required: true
+
+  - type: textarea
+    id: overview
+    attributes:
+      label: Overview
+      description: High-level description of what this epic aims to achieve
+      placeholder: |
+        This epic encompasses...
+    validations:
+      required: true
+
+  - type: textarea
+    id: objectives
+    attributes:
+      label: Objectives
+      description: List the key objectives of this epic
+      placeholder: |
+        - Objective 1
+        - Objective 2
+        - Objective 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: success-criteria
+    attributes:
+      label: Success Criteria
+      description: How will we know this epic is complete?
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: What is the priority of this epic?
+      options:
+        - P0 (Critical)
+        - P1 (High)
+        - P2 (Medium)
+        - P3 (Low)
+    validations:
+      required: true
+
+  - type: input
+    id: story-points
+    attributes:
+      label: Total Story Points
+      description: Estimated total points across all stories
+      placeholder: "125"
+
+  - type: input
+    id: target-date
+    attributes:
+      label: Target Completion Date
+      description: When should this epic be complete?
+      placeholder: "2025-03-01"
+
+  - type: textarea
+    id: phases
+    attributes:
+      label: Phases
+      description: Break down the epic into major phases
+      placeholder: |
+        ## Phase 1: Foundation (Weeks 1-2)
+        - Story 1
+        - Story 2
+
+        ## Phase 2: Core Features (Weeks 3-4)
+        - Story 3
+        - Story 4
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies & Blockers
+      description: List any dependencies or blockers
+      placeholder: |
+        - Depends on: #123
+        - Blocks: #456
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks
+      description: Identified risks and mitigation strategies
+      placeholder: |
+        | Risk | Impact | Probability | Mitigation |
+        |------|--------|-------------|------------|
+        | Risk 1 | High | Medium | Mitigation strategy |
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: Any other relevant information
