@@ -45,10 +45,10 @@ open http://localhost:8080/api/docs
 ```
 
 ### Exploring the Codebase
-- **Frontend**: `frontend/` - Vanilla JavaScript, HTML, CSS (no build step)
+- **Frontend**: `frontend-nextjs/` - Next.js 16 + shadcn/ui (TypeScript)
 - **Backend**: `backend/` - Python FastAPI with SQLite
-- **Configuration**: `docker-compose.yml`, `frontend/nginx.conf`
-- **Docs**: `README.md`, `TODO.md`, `.github/copilot-instructions.md`
+- **Configuration**: `docker-compose.yml`
+- **Docs**: `README.md`, `docs/NEXTJS_REWRITE_SUMMARY.md`, `docs/NEXTJS_REWRITE_EPIC.md`
 
 Read `.github/copilot-instructions.md` for comprehensive architecture details.
 
@@ -65,9 +65,8 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend Development
-For quick frontend-only changes without rebuilding containers:
+The frontend runs as a Next.js app inside `frontend-nextjs/`. To test via Docker:
 ```bash
-# Edit files in frontend/ directory
 # Rebuild just the frontend container
 docker-compose up --build frontend
 ```
@@ -92,7 +91,7 @@ docker-compose logs -f
 # Backend only
 docker-compose logs -f backend
 
-# Frontend/NGINX only
+# Frontend only
 docker-compose logs -f frontend
 ```
 

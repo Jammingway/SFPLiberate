@@ -17,6 +17,10 @@ artifacts/
 node_modules/
 dist/
 build/
+.next/
+out/
+.vercel/
+*.env.local
 
 # Docker
 *.log

@@ -17,7 +17,6 @@ x-ble-proxy-config: &ble-proxy-config
 
 services:
   backend:
-    <<: *ble-proxy-config
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -27,7 +26,6 @@ services:
         - BUILD_DATE=${BUILD_DATE}
         - VCS_REF=${VCS_REF}
         - VERSION=${VERSION:-dev}
-      target: production
       # Enable BuildKit for better caching and performance
       cache_from:
         - type=registry,ref=ghcr.io/josiah-nelson/sfpliberate-backend:cache
@@ -60,10 +58,6 @@ services:
       # Comment these lines if your host does not have these sockets.
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
       - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
-      - type: tmpfs
-        target: /tmp
-        tmpfs:
-          size: 100M
 
     # Network
     networks:
@@ -85,7 +79,7 @@ services:
 
     # Health check
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/v1/health').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/api/modules').read()"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -94,7 +88,8 @@ services:
     # Security options
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    # Next.js may write runtime caches; keep writable
+    read_only: false
     tmpfs:
       - /tmp
       - /app/.cache
@@ -107,14 +102,12 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend-nextjs
       dockerfile: Dockerfile
       args:
-        - NGINX_VERSION=${NGINX_VERSION:-1.27-alpine}
         - BUILD_DATE=${BUILD_DATE}
         - VCS_REF=${VCS_REF}
         - VERSION=${VERSION:-dev}
-      target: production
       cache_from:
         - type=registry,ref=ghcr.io/josiah-nelson/sfpliberate-frontend:cache
       cache_to:
@@ -133,12 +126,17 @@ services:
 
     # Environment
     environment:
-      - BACKEND_URL=http://backend
       - ENVIRONMENT=${ENVIRONMENT:-production}
+      # Backend URL used for Next.js rewrites in standalone mode
+      - BACKEND_URL=http://backend
+      # Client-side deployment flags
+      - NEXT_PUBLIC_DEPLOYMENT_MODE=standalone
+      # Default API base (proxied by Next.js)
+      - NEXT_PUBLIC_API_URL=/api
 
     # Ports exposed to host
     ports:
-      - "${HOST_PORT:-8080}:80"
+      - "${HOST_PORT:-8080}:3000"
 
     # Network
     networks:
@@ -148,38 +146,37 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 128M
+          cpus: '0.75'
+          memory: 256M
         reservations:
           cpus: '0.1'
-          memory: 32M
+          memory: 64M
 
     # Health check
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 10s
 
     # Security options
     security_opt:
       - no-new-privileges:true
     read_only: true
     tmpfs:
-      - /var/cache/nginx
-      - /var/run
       - /tmp
 
     # Labels
     labels:
       - "com.sfpliberate.service=frontend"
-      - "com.sfpliberate.description=NGINX frontend with reverse proxy"
+      - "com.sfpliberate.description=Next.js frontend with API proxy"
       - "com.sfpliberate.version=${VERSION:-dev}"
       - "traefik.enable=true"
       - "traefik.http.routers.sfpliberate.rule=Host(`${DOMAIN:-localhost}`)"
       - "traefik.http.routers.sfpliberate.entrypoints=websecure"
       - "traefik.http.routers.sfpliberate.tls.certresolver=letsencrypt"
+      - "traefik.http.services.sfpliberate.loadbalancer.server.port=3000"
 
 networks:
   sfp-internal:

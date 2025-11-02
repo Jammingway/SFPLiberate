@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SFPLiberate is a Web Bluetooth companion app for the Ubiquiti SFP Wizard (UACC-SFP-Wizard) that captures SFP/SFP+ module EEPROM data over BLE, stores it in a local library, and aims to enable cloning/reprogramming modules. The architecture is a **browser-based BLE client** (vanilla JS) + **Dockerized Python FastAPI backend** with SQLite storage, served through NGINX reverse proxy.
+SFPLiberate is a Web Bluetooth companion app for the Ubiquiti SFP Wizard (UACC-SFP-Wizard) that captures SFP/SFP+ module EEPROM data over BLE, stores it in a local library, and aims to enable cloning/reprogramming modules. The architecture is a **Next.js 16 frontend** (shadcn/ui) + **Dockerized Python FastAPI backend** with SQLite storage. In standalone mode, the Next.js server proxies `/api/*` to the backend.
 
 ## Commands
 
@@ -33,7 +33,7 @@ docker-compose logs -f
 # Backend only
 docker-compose logs -f backend
 
-# Frontend/NGINX only
+# Frontend only
 docker-compose logs -f frontend
 ```
 
@@ -60,7 +60,7 @@ SELECT id, name, vendor, model, created_at FROM sfp_modules;
 ## Architecture
 
 ### Single-Origin Reverse Proxy Design
-- **Frontend (NGINX)**: Serves static HTML/CSS/JS at `/` and reverse-proxies `/api/*` to backend
+- **Frontend (Next.js)**: Serves the app at `/` and reverse-proxies `/api/*` to backend in standalone mode
 - **Backend (FastAPI)**: Python backend on port 80 internally, exposes REST API at `/api`
 - **External Access**: Port 8080 → NGINX → routes to frontend or backend based on path
 - **No CORS Issues**: Same-origin in production; dev CORS middleware enabled on backend

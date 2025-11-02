@@ -1,0 +1,130 @@
+name: Story
+description: Create a new user story or task
+title: "[STORY] "
+labels: ["story"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## User Story Template
+        Use this template to create a new user story within an epic.
+
+  - type: input
+    id: story-id
+    attributes:
+      label: Story ID
+      description: Unique identifier for this story (e.g., STORY-001)
+      placeholder: STORY-001
+    validations:
+      required: true
+
+  - type: input
+    id: epic
+    attributes:
+      label: Parent Epic
+      description: Link to parent epic issue
+      placeholder: "#123"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: What is the priority of this story?
+      options:
+        - P0 (Blocker)
+        - P1 (High)
+        - P2 (Medium)
+        - P3 (Low)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: story-points
+    attributes:
+      label: Story Points
+      description: Estimated complexity (Fibonacci scale)
+      options:
+        - "1"
+        - "2"
+        - "3"
+        - "5"
+        - "8"
+        - "13"
+        - "21"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Detailed description of what needs to be done
+      placeholder: |
+        As a [user type],
+        I want [goal],
+        So that [benefit].
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Checklist of requirements that must be met
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Criterion 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      description: Breakdown of implementation tasks
+      placeholder: |
+        - [ ] Task 1
+        - [ ] Task 2
+        - [ ] Task 3
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List any dependencies or blockers
+      placeholder: |
+        **Depends on:** #123, #456
+        **Blocks:** #789
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: Which implementation phase does this belong to?
+      options:
+        - Phase 1 - Foundation
+        - Phase 2 - Core BLE
+        - Phase 3 - Module Library
+        - Phase 4 - Features
+        - Phase 5 - Standalone Deploy
+        - Phase 6 - Appwrite Deploy
+        - Phase 7 - Polish
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing Requirements
+      description: How should this story be tested?
+      placeholder: |
+        - Unit tests for X
+        - Integration tests for Y
+        - E2E test scenario Z
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: Any other relevant information

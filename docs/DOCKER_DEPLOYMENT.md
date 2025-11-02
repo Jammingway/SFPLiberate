@@ -151,8 +151,8 @@ docker-compose exec backend poetry run pytest
 # View frontend logs
 docker-compose logs -f frontend
 
-# Static files are mounted - just refresh browser
-# Changes to .js, .html, .css are live
+# Next.js runs on port 3000 inside the container and is exposed on HOST_PORT (default 8080)
+# The frontend proxies /api/* to the backend in standalone mode.
 ```
 
 ### Rebuilding Containers
