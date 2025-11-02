@@ -32,7 +32,10 @@ jobs:
 
       - name: Run type checking with mypy
         working-directory: ./backend
-        run: poetry run mypy app || true  # Don't fail on type errors yet
+        run: |
+          # TODO: Enforce mypy type checking failures in CI by 2024-08-01.
+          # For now, run with --warn-unused-ignores --no-error-summary to reduce noise.
+          poetry run mypy app --warn-unused-ignores --no-error-summary || true
 
       - name: Run tests with pytest
         working-directory: ./backend
