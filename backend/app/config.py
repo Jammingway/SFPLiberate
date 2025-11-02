@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./data/sfp_library.db"
+    database_url: str = "sqlite+aiosqlite:////app/data/sfp_library.db"
     database_echo: bool = False
 
     # API
