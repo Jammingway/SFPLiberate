@@ -2,15 +2,27 @@ import os
 import sqlite3
 import hashlib
 from typing import List, Optional, Tuple
+from contextlib import contextmanager
 
 # Allow overriding DB path via env var for containerized persistent storage
 DATABASE_FILE = os.environ.get("DATABASE_FILE", "sfp_library.db")
 
+@contextmanager
 def get_db_connection():
-    """Establishes a database connection."""
-    conn = sqlite3.connect(DATABASE_FILE)
+    """
+    Establishes a database connection with guaranteed cleanup.
+    Use as a context manager to ensure connections are always closed.
+    """
+    conn = sqlite3.connect(DATABASE_FILE, timeout=10.0)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def setup_database():
     """
@@ -43,27 +55,30 @@ def setup_database():
 def add_module(name: str, vendor: str, model: str, serial: str, eeprom_data: bytes) -> Tuple[int, bool]:
     """
     Adds a new SFP module's data to the database.
+    Uses IMMEDIATE transaction to prevent race conditions.
     
     Returns:
-        The ID of the newly inserted module.
+        Tuple of (module_id, is_duplicate)
     """
     digest = hashlib.sha256(eeprom_data).hexdigest()
+    
     with get_db_connection() as conn:
+        # Use IMMEDIATE transaction to lock the database
+        conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "INSERT INTO sfp_modules (name, vendor, model, serial, eeprom_data, sha256) VALUES (?, ?, ?, ?, ?, ?)",
-                (name, vendor, model, serial, sqlite3.Binary(eeprom_data), digest)
-            )
-            conn.commit()
-            return cursor.lastrowid, False
-        except sqlite3.IntegrityError:
-            # Likely duplicate by sha256
-            cursor.execute("SELECT id FROM sfp_modules WHERE sha256 = ? LIMIT 1", (digest,))
-            row = cursor.fetchone()
-            if row:
-                return int(row[0]), True
-            raise
+        
+        # Check for duplicate first (within the transaction)
+        cursor.execute("SELECT id FROM sfp_modules WHERE sha256 = ? LIMIT 1", (digest,))
+        existing = cursor.fetchone()
+        if existing:
+            return int(existing[0]), True
+        
+        # Insert new module
+        cursor.execute(
+            "INSERT INTO sfp_modules (name, vendor, model, serial, eeprom_data, sha256) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, vendor, model, serial, sqlite3.Binary(eeprom_data), digest)
+        )
+        return cursor.lastrowid, False
 
 def get_all_modules() -> List[sqlite3.Row]:
     """
