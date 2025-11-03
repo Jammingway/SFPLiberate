@@ -69,8 +69,8 @@ jobs:
       - name: Build frontend image (Next.js)
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend-nextjs
-          file: ./frontend-nextjs/Dockerfile
+          context: ./frontend
+          file: ./frontend/Dockerfile
           push: false
           tags: sfpliberate-frontend:test
           cache-from: type=gha

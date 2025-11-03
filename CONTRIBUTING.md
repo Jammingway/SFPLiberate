@@ -45,7 +45,7 @@ open http://localhost:8080/api/docs
 ```
 
 ### Exploring the Codebase
-- **Frontend**: `frontend-nextjs/` - Next.js 16 + shadcn/ui (TypeScript)
+- **Frontend**: `frontend/` - Next.js 16 + shadcn/ui (TypeScript)
 - **Backend**: `backend/` - Python FastAPI with SQLite
 - **Configuration**: `docker-compose.yml`
 - **Docs**: `README.md`, `docs/NEXTJS_REWRITE_SUMMARY.md`, `docs/NEXTJS_REWRITE_EPIC.md`
@@ -65,11 +65,11 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend Development
-The frontend is a Next.js app in `frontend-nextjs/`.
+The frontend is a Next.js app in `frontend/`.
 
 Local (without Docker):
 ```bash
-cd frontend-nextjs
+cd frontend
 npm install
 npm run dev
 # or npm run build

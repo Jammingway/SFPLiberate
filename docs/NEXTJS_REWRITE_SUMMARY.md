@@ -180,7 +180,7 @@ open http://localhost:8080
 git clone https://github.com/josiah-nelson/SFPLiberate
 
 # Install dependencies
-cd frontend-nextjs && npm install
+cd frontend && npm install
 
 # Build static export with feature flag
 DEPLOYMENT_MODE=appwrite \
@@ -213,7 +213,7 @@ docker run -d -p 8081:8081 \
 - **[Roadmap](NEXTJS_ROADMAP.md)** - Visual timeline and dependencies
 - **[Standalone BLE Proxy](STANDALONE_BLE_PROXY_SERVICE.md)** - Bonus feature spec
 - **[Migration Guide](NEXTJS_MIGRATION_GUIDE.md)** - Old vs new comparison (to be created)
-- **[Frontend README](../frontend-nextjs/README.md)** - Developer guide (to be created)
+- **[Frontend README](../frontend/README.md)** - Developer guide (to be created)
 
 ## ⚠️ Risks & Mitigations
 

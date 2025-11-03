@@ -88,8 +88,7 @@ services:
     # Security options
     security_opt:
       - no-new-privileges:true
-    # Next.js may write runtime caches; keep writable
-    read_only: false
+    read_only: true
     tmpfs:
       - /tmp
       - /app/.cache
@@ -102,7 +101,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend-nextjs
+      context: ./frontend
       dockerfile: Dockerfile
       args:
         - BUILD_DATE=${BUILD_DATE}
@@ -163,7 +162,8 @@ services:
     # Security options
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    # Next.js may write runtime caches; keep writable
+    read_only: false
     tmpfs:
       - /tmp
 
