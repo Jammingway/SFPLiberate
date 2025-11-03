@@ -1,4 +1,4 @@
-import type { GattLikeCharacteristic, GattConnection, ProxyRequestOptions, UUID } from './types';
+import type { GattConnection, GattLikeCharacteristic, ProxyRequestOptions, UUID } from './types';
 
 // Minimal base64 helpers
 const b64decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));

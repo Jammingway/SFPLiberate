@@ -1,0 +1,215 @@
+name: Deploy to Appwrite Cloud
+
+# Deployment workflow for Appwrite static hosting
+# Only runs for feature/appwrite branches or manual triggers
+# Main branch releases MUST NOT include Appwrite references
+
+on:
+  push:
+    branches:
+      - 'feature/appwrite*'
+      - 'feat/appwrite*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '22'
+  FRONTEND_DIR: frontend
+
+jobs:
+  # Validation job - ensure we're not deploying from main
+  validate:
+    name: Validate Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "❌ ERROR: Appwrite deployment is not allowed from main branch"
+            echo "Appwrite features are controlled by feature flags and should not be in main releases"
+            exit 1
+          fi
+          echo "✅ Branch validation passed: ${{ github.ref }}"
+
+  # Build and deploy to Appwrite
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    needs: validate
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ${{ env.FRONTEND_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm ci --legacy-peer-deps
+
+      - name: Build static export for Appwrite
+        working-directory: ${{ env.FRONTEND_DIR }}
+        env:
+          # Deployment mode flags
+          DEPLOYMENT_MODE: appwrite
+          NEXT_PUBLIC_DEPLOYMENT_MODE: appwrite
+          
+          # Enable authentication for Appwrite
+          NEXT_PUBLIC_ENABLE_AUTH: true
+          
+          # Appwrite configuration
+          NEXT_PUBLIC_APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
+          NEXT_PUBLIC_APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
+          
+          # API URL (public backend endpoint)
+          NEXT_PUBLIC_API_URL: ${{ secrets.PUBLIC_API_URL || 'https://api.sfpliberate.com' }}
+          
+          # Feature flags
+          NEXT_PUBLIC_ENABLE_WEB_BLUETOOTH: true
+          NEXT_PUBLIC_ENABLE_BLE_PROXY: true
+          NEXT_PUBLIC_ENABLE_COMMUNITY_FEATURES: true
+          
+          # Build optimization
+          NEXT_TELEMETRY_DISABLED: 1
+          NODE_ENV: production
+        run: |
+          echo "🏗️ Building Next.js static export for Appwrite..."
+          npm run build
+          echo "✅ Build completed successfully"
+
+      - name: Verify build output
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: |
+          if [ ! -d "out" ]; then
+            echo "❌ ERROR: Build output directory 'out' not found"
+            exit 1
+          fi
+          
+          echo "📦 Build output summary:"
+          du -sh out/
+          find out -type f | wc -l | xargs echo "Total files:"
+          
+          # Check for critical files
+          critical_files=("out/index.html" "out/_next")
+          for file in "${critical_files[@]}"; do
+            if [ ! -e "$file" ]; then
+              echo "❌ ERROR: Critical file/directory missing: $file"
+              exit 1
+            fi
+          done
+          
+          echo "✅ Build output validation passed"
+
+      - name: Install Appwrite CLI
+        run: npm install -g appwrite-cli
+
+      - name: Configure Appwrite CLI
+        env:
+          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
+          APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
+          APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+        run: |
+          echo "🔧 Configuring Appwrite CLI..."
+          appwrite client --endpoint "$APPWRITE_ENDPOINT"
+          appwrite client --key "$APPWRITE_API_KEY"
+          echo "✅ Appwrite CLI configured"
+
+      - name: Deploy to Appwrite
+        id: deploy
+        working-directory: ${{ env.FRONTEND_DIR }}
+        env:
+          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
+          APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
+          APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+        run: |
+          echo "🚀 Deploying to Appwrite Cloud..."
+          
+          # Deploy using Appwrite CLI
+          appwrite deploy function
+          
+          # Get deployment URL
+          DEPLOY_URL="${{ secrets.APPWRITE_ENDPOINT_URL }}/console/project-${{ secrets.APPWRITE_PROJECT_ID }}"
+          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          
+          echo "✅ Deployment completed successfully"
+          echo "🌐 Deployment URL: $DEPLOY_URL"
+
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 Appwrite Deployment Summary
+          
+          **Status**: ✅ Success
+          **Environment**: ${{ github.event.inputs.environment || 'staging' }}
+          **Branch**: \`${{ github.ref_name }}\`
+          **Commit**: \`${{ github.sha }}\`
+          **Triggered by**: ${{ github.actor }}
+          
+          ### Build Configuration
+          - **Deployment Mode**: Appwrite (static export)
+          - **Node Version**: ${{ env.NODE_VERSION }}
+          - **Next.js Output**: Static HTML/CSS/JS
+          - **Authentication**: Enabled (Appwrite native)
+          
+          ### Features Enabled
+          - ✅ Web Bluetooth API
+          - ✅ BLE Proxy Support
+          - ✅ Community Features
+          - ✅ Appwrite Authentication
+          
+          ### Deployment Info
+          - **Appwrite Endpoint**: \`${{ secrets.APPWRITE_ENDPOINT_URL }}\`
+          - **Project ID**: \`${{ secrets.APPWRITE_PROJECT_ID }}\`
+          - **Deployment URL**: ${{ steps.deploy.outputs.url }}
+          
+          ### Next Steps
+          1. Verify deployment at the URL above
+          2. Test authentication flow
+          3. Test BLE functionality
+          4. Check API connectivity to backend
+          
+          EOF
+
+  # Notify on failure
+  notify-failure:
+    name: Notify Failure
+    runs-on: ubuntu-latest
+    needs: [validate, deploy]
+    if: failure()
+    steps:
+      - name: Create failure summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## ❌ Appwrite Deployment Failed
+          
+          **Branch**: \`${{ github.ref_name }}\`
+          **Commit**: \`${{ github.sha }}\`
+          **Triggered by**: ${{ github.actor }}
+          
+          ### Troubleshooting
+          1. Check the logs above for error messages
+          2. Verify GitHub Secrets are configured:
+             - \`APPWRITE_API_KEY\`
+             - \`APPWRITE_ENDPOINT_URL\`
+             - \`APPWRITE_PROJECT_ID\`
+          3. Ensure you're not deploying from main branch
+          4. Check Appwrite project configuration
+          5. See docs/APPWRITE_DEPLOYMENT.md for detailed guide
+          
+          EOF

@@ -1,4 +1,4 @@
-import type { SfpProfile, GattLikeCharacteristic } from './types';
+import type { GattLikeCharacteristic, SfpProfile } from './types';
 
 const textEncoder = new TextEncoder();
 
@@ -44,37 +44,37 @@ export async function connectDirect(profile: SfpProfile, onDisconnect?: () => vo
     timeout,
     'Device selection'
   );
-  
+
   device.addEventListener('gattserverdisconnected', () => {
     if (onDisconnect) {
       onDisconnect();
     }
   });
-  
+
   const server: any = await withTimeout(
     device.gatt.connect(),
     timeout,
     'GATT connection'
   );
-  
+
   const service: any = await withTimeout(
     server.getPrimaryService(profile.serviceUuid),
     timeout,
     'Service discovery'
   );
-  
+
   const writeCharacteristic: any = await withTimeout(
     service.getCharacteristic(profile.writeCharUuid),
     timeout,
     'Write characteristic discovery'
   );
-  
+
   const notifyCharacteristic: any = await withTimeout(
     service.getCharacteristic(profile.notifyCharUuid),
     timeout,
     'Notify characteristic discovery'
   );
-  
+
   return { device, server, service, writeCharacteristic, notifyCharacteristic } as const;
 }
 

@@ -1,15 +1,14 @@
 "use client";
-import { useCallback, useMemo, useState } from 'react';
-import { isWebBluetoothAvailable } from '@/lib/ble/webbluetooth';
-import { loadActiveProfile } from '@/lib/ble/profile';
-import { Button } from '@/registry/new-york-v4/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/registry/new-york-v4/ui/alert';
-import { Label } from '@/registry/new-york-v4/ui/label';
-import { toast } from 'sonner';
-import { connect } from '@/lib/ble/manager';
-import type { ConnectionMode } from '@/lib/ble/types';
 import { discoverAndConnectSfpDevice, type DiscoveryError } from '@/lib/ble/discovery';
-import { InfoIcon, CheckCircle2, XCircle } from 'lucide-react';
+import { connect } from '@/lib/ble/manager';
+import { loadActiveProfile } from '@/lib/ble/profile';
+import type { ConnectionMode } from '@/lib/ble/types';
+import { isWebBluetoothAvailable } from '@/lib/ble/webbluetooth';
+import { Alert, AlertDescription, AlertTitle } from '@/registry/new-york-v4/ui/alert';
+import { Button } from '@/registry/new-york-v4/ui/button';
+import { CheckCircle2, InfoIcon, XCircle } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 export function DirectDiscovery() {
   const supported = useMemo(() => isWebBluetoothAvailable(), []);
@@ -34,54 +33,54 @@ export function DirectDiscovery() {
   const onDiscoverAndConnect = useCallback(async () => {
     setBusy(true);
     setStatus('Opening device chooser...');
-    
+
     try {
       // Step 1: Discover device and enumerate services
       setStatus('Discovering device and enumerating services...');
       const { device, profile } = await discoverAndConnectSfpDevice();
-      
+
       setDeviceName(device.name || 'SFP Wizard');
       setProfileConfigured(true);
       setStatus(`Profile configured for ${device.name || 'device'}`);
-      
+
       toast.success('Device discovered! Profile configured.', {
         description: `Service: ${profile.serviceUuid.slice(0, 8)}...`,
       });
-      
+
       // Step 2: Connect using the discovered profile
       setStatus('Connecting to device...');
       await connect('web-bluetooth' as ConnectionMode);
-      
+
       toast.success('Connected successfully!', {
         description: `Connected to ${device.name || 'SFP Wizard'}`,
       });
-      
+
       setStatus('');
-      
+
     } catch (error: any) {
       const err = error as DiscoveryError;
-      
+
       // Handle different error types with helpful messages
       switch (err.code) {
         case 'user-cancelled':
           setStatus('');
           // Don't show error toast for user cancellation
           break;
-          
+
         case 'not-supported':
           toast.error('Web Bluetooth Not Supported', {
             description: 'Your browser does not support Web Bluetooth. Try Chrome, Edge, or use Proxy mode.',
           });
           setStatus('');
           break;
-          
+
         case 'no-device-found':
           toast.error('No Device Selected', {
             description: err.message || 'Please select a device with "SFP" in the name.',
           });
           setStatus('');
           break;
-          
+
         case 'no-services-found':
           toast.error('Device Profile Not Found', {
             description: err.message || 'Could not find notify/write characteristics. Try Proxy Discovery.',
@@ -89,7 +88,7 @@ export function DirectDiscovery() {
           });
           setStatus('');
           break;
-          
+
         case 'connection-failed':
           toast.error('Connection Failed', {
             description: 'Make sure the device is on, not connected elsewhere, and in range.',
@@ -97,7 +96,7 @@ export function DirectDiscovery() {
           });
           setStatus('');
           break;
-          
+
         default:
           toast.error('Discovery Failed', {
             description: error?.message || String(error),
@@ -105,7 +104,7 @@ export function DirectDiscovery() {
           });
           setStatus('');
       }
-      
+
       console.error('Discovery error:', err);
     } finally {
       setBusy(false);
@@ -118,7 +117,7 @@ export function DirectDiscovery() {
   const onReconnect = useCallback(async () => {
     setBusy(true);
     setStatus('Reconnecting...');
-    
+
     try {
       const profile = loadActiveProfile();
       if (!profile?.serviceUuid || !profile?.writeCharUuid || !profile?.notifyCharUuid) {
@@ -127,13 +126,13 @@ export function DirectDiscovery() {
         });
         return;
       }
-      
+
       await connect('web-bluetooth' as ConnectionMode);
-      
+
       toast.success('Reconnected!', {
         description: `Connected to ${profile.deviceName || 'device'}`,
       });
-      
+
       setStatus('');
     } catch (error: any) {
       toast.error('Reconnection Failed', {
@@ -151,7 +150,7 @@ export function DirectDiscovery() {
         <XCircle className="h-4 w-4" />
         <AlertTitle>Web Bluetooth Not Available</AlertTitle>
         <AlertDescription>
-          Your browser does not support Web Bluetooth. 
+          Your browser does not support Web Bluetooth.
           <br />
           <strong>Recommendations:</strong>
           <ul className="mt-2 ml-4 list-disc text-sm">
@@ -171,7 +170,7 @@ export function DirectDiscovery() {
         <InfoIcon className="h-4 w-4" />
         <AlertTitle>Direct Browser Connection</AlertTitle>
         <AlertDescription>
-          Connect directly to your SFP Wizard using Web Bluetooth. 
+          Connect directly to your SFP Wizard using Web Bluetooth.
           The device will be automatically discovered and configured.
         </AlertDescription>
       </Alert>
@@ -194,18 +193,18 @@ export function DirectDiscovery() {
       {/* Action buttons */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
-          <Button 
-            onClick={onDiscoverAndConnect} 
+          <Button
+            onClick={onDiscoverAndConnect}
             disabled={busy}
             size="lg"
             className="flex-1"
           >
             {busy ? 'Working...' : 'Discover and Connect'}
           </Button>
-          
+
           {profileConfigured && (
-            <Button 
-              onClick={onReconnect} 
+            <Button
+              onClick={onReconnect}
               disabled={busy}
               variant="secondary"
               size="lg"
@@ -214,7 +213,7 @@ export function DirectDiscovery() {
             </Button>
           )}
         </div>
-        
+
         {status && (
           <div className="text-sm text-neutral-600 dark:text-neutral-400 flex items-center gap-2">
             <div className="animate-spin h-3 w-3 border-2 border-neutral-400 border-t-transparent rounded-full" />

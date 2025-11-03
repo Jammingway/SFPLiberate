@@ -1,7 +1,6 @@
-import { buildDefaultProxyWsUrl, BLEProxyClient } from './proxyClient';
-import { connectDirect, isWebBluetoothAvailable, startNotifications, writeText, writeChunks } from './webbluetooth';
-import type { ConnectionMode, ResolvedMode, SfpProfile } from './types';
+import { features } from '@/lib/features';
 import { requireProfile, saveActiveProfile } from './profile';
+import { BLEProxyClient, buildDefaultProxyWsUrl } from './proxyClient';
 import {
   getBleState,
   log as logLine,
@@ -13,7 +12,8 @@ import {
   setResolvedMode,
   setSfpPresent,
 } from './store';
-import { features } from '@/lib/features';
+import type { ConnectionMode, ResolvedMode, SfpProfile } from './types';
+import { connectDirect, isWebBluetoothAvailable, startNotifications, writeChunks, writeText } from './webbluetooth';
 
 const TESTED_FIRMWARE_VERSION = '1.0.10';
 
@@ -82,23 +82,23 @@ export function resolveConnectionMode(selected: ConnectionMode): ResolvedMode {
  */
 export function handleDisconnection() {
   logLine('Device disconnected - cleaning up resources');
-  
+
   // Clear status monitoring interval
   if (statusMonitoringId) {
     clearInterval(statusMonitoringId);
     statusMonitoringId = null;
   }
-  
+
   // Clear all pending message listeners
   listeners.forEach(l => {
     clearTimeout(l.timeoutId);
     l.reject(new Error('Device disconnected'));
   });
   listeners.length = 0;
-  
+
   // Clear active connection
   active = null;
-  
+
   // Update state
   setConnected(false);
   setConnectionType('Not Connected');
@@ -175,10 +175,10 @@ function scheduleStatusMonitoring() {
   if (statusMonitoringId) {
     clearInterval(statusMonitoringId);
   }
-  
+
   // Poll status every 5 seconds
-  requestDeviceStatus().catch(() => {}); // Fire-and-forget initial check
-  
+  requestDeviceStatus().catch(() => { }); // Fire-and-forget initial check
+
   statusMonitoringId = setInterval(() => {
     const st = getBleState();
     if (!st.connected) {

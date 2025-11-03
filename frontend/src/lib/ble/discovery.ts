@@ -30,20 +30,20 @@ export interface DiscoveryError {
 export async function discoverAndConnectSfpDevice(): Promise<DiscoveryResult> {
   // Step 1: Request device from user with name filter
   const device = await requestSfpDevice();
-  
+
   // Step 2: Connect and enumerate services
   const profile = await enumerateDeviceProfile(device);
-  
+
   // Step 3: Save profile for future use
   saveActiveProfile(profile);
-  
+
   // Step 4: Disconnect (caller will reconnect using the profile)
   try {
     await device.gatt?.disconnect();
   } catch (e) {
     console.warn('Failed to disconnect after enumeration:', e);
   }
-  
+
   return { device, profile };
 }
 
@@ -53,7 +53,7 @@ export async function discoverAndConnectSfpDevice(): Promise<DiscoveryResult> {
  */
 async function requestSfpDevice(): Promise<any> {
   const bluetooth = (navigator as any).bluetooth;
-  
+
   if (!bluetooth || typeof bluetooth.requestDevice !== 'function') {
     throw createError('not-supported', 'Web Bluetooth API is not available in this browser.');
   }
@@ -68,18 +68,18 @@ async function requestSfpDevice(): Promise<any> {
       ],
       optionalServices: [], // Will enumerate all services after connection
     });
-    
+
     if (!device) {
       throw createError('no-device-found', 'No device was selected.');
     }
-    
+
     return device;
   } catch (error: any) {
     // Handle specific error cases
     if (error.name === 'NotFoundError') {
       throw createError('user-cancelled', 'Device selection was cancelled.');
     }
-    
+
     // If name filter fails, try acceptAllDevices as fallback
     try {
       console.warn('Name filter failed, trying acceptAllDevices fallback');
@@ -87,14 +87,14 @@ async function requestSfpDevice(): Promise<any> {
         acceptAllDevices: true,
         optionalServices: [],
       });
-      
+
       // Check if selected device name contains 'sfp'
       const deviceName = (device.name || '').toLowerCase();
       if (!deviceName.includes('sfp')) {
-        throw createError('no-device-found', 
+        throw createError('no-device-found',
           `Selected device "${device.name || 'Unknown'}" does not appear to be an SFP Wizard. Please select a device with "SFP" in the name.`);
       }
-      
+
       return device;
     } catch (fallbackError: any) {
       if (fallbackError.code) {
@@ -116,35 +116,35 @@ async function enumerateDeviceProfile(device: any): Promise<SfpProfile> {
   try {
     // Connect to device
     const server = await device.gatt!.connect();
-    
+
     // Get all primary services
     const services = await server.getPrimaryServices();
-    
+
     if (!services || services.length === 0) {
-      throw createError('no-services-found', 
+      throw createError('no-services-found',
         'No services found on device. Make sure the device is powered on and in pairing mode.');
     }
-    
+
     console.log(`Found ${services.length} services, enumerating characteristics...`);
-    
+
     // Search through services to find a notify + write pair
     for (const service of services) {
       try {
         const characteristics = await service.getCharacteristics();
-        
+
         // Look for notify and write characteristics
         const notifyChar = characteristics.find((c: any) => c.properties.notify);
-        const writeChar = characteristics.find((c: any) => 
+        const writeChar = characteristics.find((c: any) =>
           c.properties.writeWithoutResponse || c.properties.write
         );
-        
+
         if (notifyChar && writeChar) {
           console.log('✓ Found compatible service:', {
             serviceUuid: service.uuid,
             notifyCharUuid: notifyChar.uuid,
             writeCharUuid: writeChar.uuid,
           });
-          
+
           return {
             serviceUuid: service.uuid,
             notifyCharUuid: notifyChar.uuid,
@@ -158,24 +158,24 @@ async function enumerateDeviceProfile(device: any): Promise<SfpProfile> {
         // Continue to next service
       }
     }
-    
+
     // If we get here, no compatible service was found
-    throw createError('no-services-found', 
+    throw createError('no-services-found',
       `Device has ${services.length} service(s) but none have the required notify + write characteristics. ` +
       'This may not be an SFP Wizard device, or it may be using a non-standard GATT profile.');
-      
+
   } catch (error: any) {
     if (error.code) {
       throw error; // Re-throw our custom errors
     }
-    
+
     // Handle connection errors
     if (error.name === 'NetworkError' || error.message?.includes('GATT')) {
-      throw createError('connection-failed', 
+      throw createError('connection-failed',
         'Failed to connect to device. Make sure the device is powered on, not connected to another app, and in range.',
         error);
     }
-    
+
     throw createError('unknown', 'Failed to enumerate device profile', error);
   }
 }
@@ -186,7 +186,7 @@ async function enumerateDeviceProfile(device: any): Promise<SfpProfile> {
  */
 export async function requestDeviceWithProfile(profile: SfpProfile): Promise<any> {
   const bluetooth = (navigator as any).bluetooth;
-  
+
   if (!bluetooth || typeof bluetooth.requestDevice !== 'function') {
     throw createError('not-supported', 'Web Bluetooth API is not available in this browser.');
   }
@@ -197,13 +197,13 @@ export async function requestDeviceWithProfile(profile: SfpProfile): Promise<any
       filters: [{ services: [profile.serviceUuid] }],
       optionalServices: [profile.serviceUuid],
     });
-    
+
     return device;
   } catch (error: any) {
     if (error.name === 'NotFoundError') {
       throw createError('user-cancelled', 'Device selection was cancelled.');
     }
-    
+
     // Fallback to name-based selection
     try {
       console.warn('Service filter failed, trying name filter');

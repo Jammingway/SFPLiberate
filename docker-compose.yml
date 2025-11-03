@@ -19,7 +19,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.new
       args:
         - PYTHON_VERSION=${PYTHON_VERSION:-3.11}
         - POETRY_VERSION=${POETRY_VERSION:-1.8.5}
