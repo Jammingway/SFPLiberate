@@ -159,7 +159,9 @@ function handleNotifications(event: { target: { value: DataView } }) {
     }
     if (text) onText(text);
   } else {
-    onBinary(value.buffer);
+    // Ensure we pass a real ArrayBuffer (not SharedArrayBuffer)
+    const bytesCopy = new Uint8Array(bytes).slice();
+    onBinary(bytesCopy.buffer);
   }
 }
 

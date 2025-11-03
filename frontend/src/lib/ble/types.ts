@@ -33,8 +33,12 @@ export interface GattLikeService {
   getCharacteristic: (uuid: UUID) => Promise<GattLikeCharacteristic>;
 }
 
+export interface GattConnection {
+  getPrimaryService: (uuid: UUID) => Promise<GattLikeService>;
+}
+
 export interface GattLikeServer {
-  connect: () => Promise<{ getPrimaryService: (uuid: UUID) => Promise<GattLikeService> }>;
+  connect: () => Promise<GattConnection>;
 }
 
 export interface ProxyRequestOptions {
@@ -42,4 +46,3 @@ export interface ProxyRequestOptions {
   deviceAddress?: string | null;
   adapter?: string | null;
 }
-

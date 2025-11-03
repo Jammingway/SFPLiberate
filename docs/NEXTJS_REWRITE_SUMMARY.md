@@ -157,6 +157,13 @@ Week 12:    Phase 7 - Polish (Stories 24-25)
 
 ## 🚀 Quick Start (After Implementation)
 
+### Current UI (as implemented)
+
+- Dashboard (`/`): modern Cards with Connection status, BLE control, and an Activity panel using shadcn Tabs (Log / DDM / Events).
+- Unified SFP Discovery: “Discover SFP and Connect” prioritizes direct Web Bluetooth (scanning devices whose name contains “sfp”, harvesting advertised service UUIDs, reopening the chooser with optionalServices, inferring notify/write, and saving the profile), with a silent fallback to proxy discovery when required.
+- Manual options: Direct chooser (unfiltered), Quick SFP Connect (explicit scan → chooser → infer), and Proxy Discovery (adapters + scan + connect-by-address).
+- Modules (`/modules`): module library table with search/sort/pagination and write confirmation dialog.
+
 ### Standalone Mode (Docker)
 ```bash
 # Clone repo (single main branch)
@@ -175,7 +182,7 @@ open http://localhost:8080
 git clone https://github.com/josiah-nelson/SFPLiberate
 
 # Install dependencies
-cd frontend-nextjs && npm install
+cd frontend && npm install
 
 # Build static export with feature flag
 DEPLOYMENT_MODE=appwrite \
@@ -208,7 +215,7 @@ docker run -d -p 8081:8081 \
 - **[Roadmap](NEXTJS_ROADMAP.md)** - Visual timeline and dependencies
 - **[Standalone BLE Proxy](STANDALONE_BLE_PROXY_SERVICE.md)** - Bonus feature spec
 - **[Migration Guide](NEXTJS_MIGRATION_GUIDE.md)** - Old vs new comparison (to be created)
-- **[Frontend README](../frontend-nextjs/README.md)** - Developer guide (to be created)
+- **[Frontend README](../frontend/README.md)** - Developer guide (to be created)
 
 ## ⚠️ Risks & Mitigations
 

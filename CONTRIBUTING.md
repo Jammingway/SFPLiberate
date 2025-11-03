@@ -45,7 +45,7 @@ open http://localhost:8080/api/docs
 ```
 
 ### Exploring the Codebase
-- **Frontend**: `frontend-nextjs/` - Next.js 16 + shadcn/ui (TypeScript)
+- **Frontend**: `frontend/` - Next.js 16 + shadcn/ui (TypeScript)
 - **Backend**: `backend/` - Python FastAPI with SQLite
 - **Configuration**: `docker-compose.yml`
 - **Docs**: `README.md`, `docs/NEXTJS_REWRITE_SUMMARY.md`, `docs/NEXTJS_REWRITE_EPIC.md`
@@ -65,11 +65,23 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend Development
-The frontend runs as a Next.js app inside `frontend-nextjs/`. To test via Docker:
+The frontend is a Next.js app in `frontend/`.
+
+Local (without Docker):
 ```bash
-# Rebuild just the frontend container
-docker-compose up --build frontend
+cd frontend
+npm install
+npm run dev
+# or npm run build
 ```
+
+Pages:
+- `/` Dashboard (Connection, BLE Control, Activity Tabs)
+- `/modules` Module Library (search/sort/pagination, write confirmation)
+
+Discovery & Web Bluetooth
+- The Dashboard includes “Discover SFP and Connect” which first tries Web Bluetooth Scanning to detect devices named “sfp”, infer service/write/notify UUIDs, and connect directly; if scanning is unavailable, it falls back to proxy discovery/connection.
+- Web Bluetooth requires a secure context (HTTPS or http://localhost). The app includes a banner that explains precise reasons when direct mode is blocked (secure context, navigator.bluetooth presence, adapter availability).
 
 ### Database Access
 ```bash

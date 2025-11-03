@@ -4,7 +4,7 @@
 
 `SFPLiberate` is a companion web application for the **Ubiquiti SFP Wizard (UACC‑SFP‑Wizard)**, a portable, ESP32‑class SFP/SFP+ module programmer. The SFP Wizard performs reading/writing on‑device; meanwhile it broadcasts diagnostic logs and data over BLE. This app connects over Web Bluetooth to capture those broadcasts, parse module details, and save profiles to a local library you control. It aims to enable writing saved profiles back to modules, historical DDM logging (CSV, future), and a community repository of module data, compatibility notes, and statistics.
 
-This project is built on a modern web stack, using your browser's **Web Bluetooth API** to subscribe to the SFP Wizard’s BLE logs/data and a **Dockerized Python backend** to manage your module library. The frontend is served by NGINX which also reverse‑proxies API calls at `/api` to the backend for a single‑origin experience (no CORS headaches).
+This project is built on a modern web stack, using your browser's **Web Bluetooth API** to subscribe to the SFP Wizard’s BLE logs/data and a **Dockerized Python backend** to manage your module library. The frontend is a **Next.js 16** app (with shadcn/ui) that proxies API calls at `/api` to the backend for a single‑origin experience.
 
 ## Operating Modes
 
@@ -41,7 +41,7 @@ This tool is the result of reverse‑engineering the SFP Wizard's Bluetooth LE (
     
 3.  **Architecture:** This app is split into two parts:
     
-    -   **Frontend (Browser):** A static HTML/CSS/JS application that uses the **Web Bluetooth API** (`navigator.bluetooth`) to connect directly to the SFP Wizard and capture logs/data (including EEPROM dumps) for parsing and saving.
+    -   **Frontend (Browser):** A Next.js 16 app (TypeScript + shadcn/ui) that uses the **Web Bluetooth API** (`navigator.bluetooth`) to connect directly to the SFP Wizard and capture logs/data (including EEPROM dumps) for parsing and saving.
         
     -   **Backend (Docker):** A lightweight **Python (FastAPI)** server that runs in a Docker container. Its only job is to provide a REST API for storing and retrieving module data from an **SQLite** database.
         
@@ -188,9 +188,9 @@ This project is built to run with a single command:
     
     This command will:
     
-    -   Build the backend (FastAPI) and frontend (NGINX) containers.
-    -   Serve the frontend on `http://localhost:8080`.
-    -   Reverse proxy API requests to the backend at `http://localhost:8080/api`.
+    -   Build the backend (FastAPI) and frontend (Next.js) containers.
+    -   Serve the frontend on `http://localhost:8080` (Next.js on port 3000 inside the container).
+    -   Reverse proxy/API rewrites: the frontend proxies `/api/*` to the backend in standalone mode.
         
     
     ```
@@ -204,15 +204,15 @@ This project is built to run with a single command:
     
     http://localhost:8080
     
-    _(Note: We use port `8080` to avoid conflicts with other local servers, but the `nginx` container serves on port `80`)._
+    _(Note: We use port `8080` mapped to Next.js port `3000` inside the container to avoid conflicts with local servers)._ 
     
 4.  **Connect and Go!**
-    
-    -   Choose Connection Mode (Auto/Web Bluetooth/Proxy) and click "Connect to SFP Wizard".
-        
-    -   Select your device from the popup.
-        
-    -   Start reading and building your library!
+
+- Click “Discover SFP and Connect”. The app will:
+  1) Try Web Bluetooth Scanning to find devices named like “sfp”, harvest service UUIDs, reopen the chooser with the right permissions, infer notify/write, save the profile, and connect directly.
+  2) If scanning isn’t supported (or UUIDs aren’t advertised), fall back to proxy discovery and connect via backend.
+
+- You can also use “Scan (Open Chooser)” (unfiltered chooser) and “Proxy Discovery” manually.
         
 
 ### Development
