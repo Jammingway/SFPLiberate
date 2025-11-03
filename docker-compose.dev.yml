@@ -9,12 +9,11 @@ services:
     # Development build with hot-reload
     build:
       context: ./backend
-      target: development
       dockerfile: Dockerfile.new
-    
+
     # Override image tag for dev
     image: sfpliberate-backend:dev
-    
+
     # Mount source code for hot-reload
     volumes:
       - ./backend/app:/app/app:ro
@@ -23,7 +22,7 @@ services:
       - backend_data_dev:/app/data:rw
       # Mount .env for live config changes
       - ./.env:/app/.env:rw
-    
+
     # Development environment variables
     environment:
       - LOG_LEVEL=debug
@@ -32,7 +31,7 @@ services:
       - WATCHFILES_FORCE_POLLING=true
       # Enable hot-reload
       - UVICORN_RELOAD=true
-    
+
     # Override command for development with auto-reload
     command: >
       sh -c "alembic upgrade head &&
@@ -42,17 +41,17 @@ services:
              --reload 
              --reload-dir /app/app
              --log-level debug"
-    
+
     # Remove resource limits for development
     deploy:
       resources:
         limits:
           cpus: '2.0'
           memory: 1G
-    
+
     # Disable read-only filesystem for development
     read_only: false
-    
+
     # Faster health checks
     healthcheck:
       interval: 10s
@@ -66,10 +65,10 @@ services:
       context: ./frontend
       target: deps
       dockerfile: Dockerfile
-    
+
     # Override image tag for dev
     image: sfpliberate-frontend:dev
-    
+
     # Mount source code for hot-reload
     volumes:
       - ./frontend/src:/app/src:ro
@@ -81,33 +80,33 @@ services:
       # Node modules volume for better performance
       - frontend_node_modules:/app/node_modules
       - frontend_next:/app/.next
-    
+
     # Development environment
     environment:
       - NODE_ENV=development
       - NEXT_TELEMETRY_DISABLED=1
       - WATCHPACK_POLLING=true
-    
+
     # Override command for development with hot-reload
     command: npm run dev
-    
+
     # Remove resource limits for development
     deploy:
       resources:
         limits:
           cpus: '2.0'
           memory: 1G
-    
+
     # Disable read-only filesystem for development
     read_only: false
-    
+
     # Faster health checks
     healthcheck:
       interval: 10s
       timeout: 3s
       retries: 2
       start_period: 5s
-    
+
     # Expose additional ports for debugging
     ports:
       - "${HOST_PORT:-8080}:3000"

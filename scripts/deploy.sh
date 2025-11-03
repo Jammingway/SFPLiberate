@@ -237,16 +237,38 @@ show_logs() {
   docker-compose logs --tail=50
 }
 
+# Tag current images as last known good
+tag_current_as_previous() {
+  log_info "Tagging current images as 'previous' for rollback..."
+  
+  # Check if current images exist
+  if docker image inspect sfpliberate-backend:latest &>/dev/null; then
+    docker tag sfpliberate-backend:latest sfpliberate-backend:previous
+    log_success "Tagged backend:latest as backend:previous"
+  else
+    log_warning "No existing backend:latest image found"
+  fi
+  
+  if docker image inspect sfpliberate-frontend:latest &>/dev/null; then
+    docker tag sfpliberate-frontend:latest sfpliberate-frontend:previous
+    log_success "Tagged frontend:latest as frontend:previous"
+  else
+    log_warning "No existing frontend:latest image found"
+  fi
+}
+
 # Rollback to previous version
 rollback() {
   log_warning "Rolling back to previous version..."
   
-  # Get previous image tags
-  PREVIOUS_BACKEND=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep sfpliberate-backend | sed -n 2p)
-  PREVIOUS_FRONTEND=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep sfpliberate-frontend | sed -n 2p)
+  # Check for explicitly tagged previous images
+  PREVIOUS_BACKEND="sfpliberate-backend:previous"
+  PREVIOUS_FRONTEND="sfpliberate-frontend:previous"
   
-  if [ -z "$PREVIOUS_BACKEND" ] || [ -z "$PREVIOUS_FRONTEND" ]; then
+  if ! docker image inspect "$PREVIOUS_BACKEND" &>/dev/null || ! docker image inspect "$PREVIOUS_FRONTEND" &>/dev/null; then
     log_error "No previous images found for rollback"
+    log_error "Rollback requires images tagged as 'previous'"
+    log_error "This typically happens when deploying for the first time"
     exit 1
   fi
   
@@ -306,10 +328,13 @@ main() {
     git pull || log_warning "Could not pull from git (may not be on a branch)"
   fi
   
+  # Tag current images as previous (for rollback)
+  tag_current_as_previous
+  
   # Build new images
   build_images
   
-  # Deploy with zero-downtime strategy
+  # Deploy with health checks
   log_info "Deploying new version..."
   
   # Start new containers

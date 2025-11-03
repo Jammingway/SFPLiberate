@@ -135,15 +135,17 @@ make health
 ./scripts/deploy.sh --rollback     # Rollback to previous version
 ```
 
-### Zero-Downtime Deployment
+### Deployment with Health Checks
 
 The deployment script automatically:
 
 1. ✅ Backs up database
 2. ✅ Builds new images
-3. ✅ Starts new containers
+3. ✅ Starts new containers (with brief downtime for single-instance setups)
 4. ✅ Runs health checks
 5. ✅ Rolls back on failure
+
+**Note**: For single-instance deployments, `docker-compose up -d` will stop the existing containers before starting new ones, resulting in brief downtime (typically a few seconds). For true zero-downtime deployments, consider implementing a blue-green deployment strategy with multiple instances behind a load balancer
 
 ---
 

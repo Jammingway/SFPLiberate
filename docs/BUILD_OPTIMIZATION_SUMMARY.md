@@ -70,7 +70,7 @@ make status       # Container status
 
 **Deployment:**
 ```bash
-make deploy       # Zero-downtime deploy
+make deploy       # Production deploy with health checks
 make pull         # Pull latest images
 make push         # Push to registry
 ```
@@ -212,7 +212,7 @@ PR → Test → Build → Integration Test → Merge → Deploy
 - ✅ Pre-flight checks (Docker, docker-compose)
 - 💾 Automatic database backup
 - 🏗️ Build with version metadata
-- 🔄 Zero-downtime deployment
+- 🔄 Deployment with health checks (brief downtime for single-instance)
 - 🏥 Health checks with timeout
 - ⏮️ Automatic rollback on failure
 - 🧹 Cleanup old images
@@ -287,7 +287,7 @@ PR → Test → Build → Integration Test → Merge → Deploy
 - 🚀 **Automated deployments** (zero touch)
 
 ### Production Reliability
-- 🛡️ **Zero-downtime** deployments
+- 🛡️ **Deployment with health checks** (brief downtime for single-instance)
 - ⏮️ **Automatic rollback** on failure
 - 💾 **Automated backups** (database)
 - 🏥 **Health monitoring** (continuous)
@@ -434,7 +434,7 @@ The build and deployment process is now:
 - 🛡️ **Safer** (automated rollback, backups)
 - 📚 **Better documented** (comprehensive guides)
 - 🔧 **Easier to use** (Makefile + scripts)
-- 🚀 **Production-ready** (zero-downtime, monitoring)
+- 🚀 **Production-ready** (health checks, monitoring)
 
 **Status**: ✅ Ready for production use!
 
