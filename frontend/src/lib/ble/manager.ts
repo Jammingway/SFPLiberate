@@ -17,6 +17,56 @@ import { features } from '@/lib/features';
 
 const TESTED_FIRMWARE_VERSION = '1.0.10';
 
+/**
+ * Custom error class for API operations
+ */
+class APIError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public originalError?: any
+  ) {
+    super(message);
+    this.name = 'APIError';
+  }
+}
+
+/**
+ * Fetch with automatic retry and timeout handling
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  retries = 2
+): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return res;
+    } catch (error: any) {
+      if (attempt === retries) {
+        throw new APIError(
+          'Network request failed after retries',
+          undefined,
+          error
+        );
+      }
+
+      // Exponential backoff
+      await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
+    }
+  }
+  throw new Error('Unreachable');
+}
+
 export function resolveConnectionMode(selected: ConnectionMode): ResolvedMode {
   if (selected === 'web-bluetooth') return 'direct';
   if (selected === 'proxy') return 'proxy';
@@ -24,6 +74,44 @@ export function resolveConnectionMode(selected: ConnectionMode): ResolvedMode {
   if (isWebBluetoothAvailable()) return 'direct';
   if (BLEProxyClient.isAvailable()) return 'proxy';
   return 'none';
+}
+
+/**
+ * Clean up connection resources when device disconnects.
+ * Prevents memory leaks and ensures clean state.
+ */
+export function handleDisconnection() {
+  logLine('Device disconnected - cleaning up resources');
+  
+  // Clear status monitoring interval
+  if (statusMonitoringId) {
+    clearInterval(statusMonitoringId);
+    statusMonitoringId = null;
+  }
+  
+  // Clear all pending message listeners
+  listeners.forEach(l => {
+    clearTimeout(l.timeoutId);
+    l.reject(new Error('Device disconnected'));
+  });
+  listeners.length = 0;
+  
+  // Clear active connection
+  active = null;
+  
+  // Update state
+  setConnected(false);
+  setConnectionType('Not Connected');
+}
+
+/**
+ * Stop status monitoring without full disconnection cleanup.
+ */
+export function stopStatusMonitoring() {
+  if (statusMonitoringId) {
+    clearInterval(statusMonitoringId);
+    statusMonitoringId = null;
+  }
 }
 
 export type ActiveConnection = {
@@ -34,6 +122,7 @@ export type ActiveConnection = {
 };
 
 let active: ActiveConnection | null = null;
+let statusMonitoringId: ReturnType<typeof setInterval> | null = null;
 type MsgListener = { pattern: string | RegExp; resolve: (text: string) => void; reject: (e: any) => void; timeoutId: any };
 const listeners: MsgListener[] = [];
 
@@ -51,7 +140,7 @@ export async function connect(selected: ConnectionMode) {
 async function connectDirectMode() {
   logLine('Requesting BLE device...');
   const profile = requireProfile();
-  const { device, server, service, writeCharacteristic, notifyCharacteristic } = await connectDirect(profile);
+  const { device, server, service, writeCharacteristic, notifyCharacteristic } = await connectDirect(profile, handleDisconnection);
   active = { mode: 'direct', write: writeCharacteristic, notify: notifyCharacteristic, proxy: null };
   await startNotifications(notifyCharacteristic, handleNotifications);
   setConnected(true);
@@ -82,15 +171,23 @@ async function connectViaProxy() {
 }
 
 function scheduleStatusMonitoring() {
+  // Clear any existing monitor
+  if (statusMonitoringId) {
+    clearInterval(statusMonitoringId);
+  }
+  
   // Poll status every 5 seconds
-  requestDeviceStatus();
-  const id = setInterval(() => {
+  requestDeviceStatus().catch(() => {}); // Fire-and-forget initial check
+  
+  statusMonitoringId = setInterval(() => {
     const st = getBleState();
     if (!st.connected) {
-      clearInterval(id);
+      stopStatusMonitoring();
       return;
     }
-    requestDeviceStatus();
+    requestDeviceStatus().catch((e) => {
+      logLine(`Status check failed: ${String(e)}`);
+    });
   }, 5000);
 }
 
@@ -135,29 +232,62 @@ export async function sendBleCommand(command: string) {
   logLine(`Sent Command: ${command}`);
 }
 
-// Notification handler: replicates legacy heuristic for text vs binary
+// Notification handler: improved text vs binary detection
 const textDecoder = new TextDecoder('utf-8');
+
+/**
+ * Detect if data is text or binary using multiple heuristics
+ */
+function detectContentType(bytes: Uint8Array): 'text' | 'binary' {
+  // Must be at least 4 bytes to be considered text
+  if (bytes.length < 4) return 'binary';
+
+  // Check for known binary signatures
+  // SFF-8472 EEPROM: identifier byte 0x03 at start, typically 256+ bytes
+  if (bytes[0] === 0x03 && bytes.length >= 128) {
+    return 'binary';
+  }
+
+  // Try UTF-8 decode (handles ASCII + UTF-8)
+  try {
+    const text = textDecoder.decode(bytes);
+
+    // Check if it's printable (allow ASCII + UTF-8 chars)
+    const printableChars = [...text].filter((c) => {
+      const code = c.charCodeAt(0);
+      return (
+        code === 9 || // tab
+        code === 10 || // newline
+        code === 13 || // carriage return
+        (code >= 32 && code <= 126) || // ASCII printable
+        code > 127 // UTF-8 multibyte
+      );
+    }).length;
+
+    const printableRatio = printableChars / text.length;
+
+    // If >80% printable, consider it text
+    return printableRatio > 0.8 ? 'text' : 'binary';
+  } catch {
+    return 'binary';
+  }
+}
+
 function handleNotifications(event: { target: { value: DataView } }) {
   const { value } = event.target;
   const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 
-  let isLikelyText = true;
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    if (!(b === 9 || b === 10 || b === 13 || (b >= 32 && b <= 126))) {
-      isLikelyText = false;
-      break;
-    }
-  }
+  const contentType = detectContentType(bytes);
 
-  if (isLikelyText) {
-    let text: string | null = null;
+  if (contentType === 'text') {
     try {
-      text = textDecoder.decode(bytes);
+      const text = textDecoder.decode(bytes);
+      onText(text);
     } catch {
-      text = null;
+      // Decode failed despite detection, treat as binary
+      const bytesCopy = new Uint8Array(bytes).slice();
+      onBinary(bytesCopy.buffer);
     }
-    if (text) onText(text);
   } else {
     // Ensure we pass a real ArrayBuffer (not SharedArrayBuffer)
     const bytesCopy = new Uint8Array(bytes).slice();
@@ -227,29 +357,61 @@ function onBinary(buf: ArrayBuffer) {
 
 // Backend helpers
 export async function listModules() {
-  const base = features.api.baseUrl;
-  const res = await fetch(`${base}/v1/modules`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  try {
+    const base = features.api.baseUrl;
+    const res = await fetchWithRetry(`${base}/v1/modules`);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new APIError(`Failed to fetch modules: ${body}`, res.status);
+    }
+
+    return res.json();
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError('Network error while fetching modules', undefined, error);
+  }
+}
+
+/**
+ * Safely encode Uint8Array to base64 (handles large files)
+ */
+function base64Encode(bytes: Uint8Array): string {
+  const chunkSize = 8192;
+  let binary = '';
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode(...Array.from(chunk));
+  }
+
+  return btoa(binary);
 }
 
 export async function saveCurrentModule(metadata?: Record<string, any>) {
   const buf = getBleState().rawEepromData;
   if (!buf) throw new Error('No EEPROM captured in memory');
-  const base = features.api.baseUrl;
-  // Base64 encode
-  const bytes = new Uint8Array(buf);
-  const b64 = btoa(String.fromCharCode(...Array.from(bytes)));
-  const res = await fetch(`${base}/v1/modules`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eeprom_base64: b64, ...metadata }),
-  });
-  const out = await res.json();
-  if (!res.ok || (out && out.error)) {
-    throw new Error(out?.error || `HTTP ${res.status}`);
+
+  try {
+    const base = features.api.baseUrl;
+    const bytes = new Uint8Array(buf);
+    const b64 = base64Encode(bytes);
+
+    const res = await fetchWithRetry(`${base}/v1/modules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eeprom_base64: b64, ...metadata }),
+    });
+
+    const out = await res.json();
+    if (!res.ok || (out && out.error)) {
+      throw new APIError(out?.error || `HTTP ${res.status}`, res.status);
+    }
+    return out;
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError('Failed to save module', undefined, error);
   }
-  return out;
 }
 
 // Proxy discovery helpers (optional)
@@ -351,28 +513,42 @@ export function waitForMessage(pattern: string | RegExp, timeoutMs = 5000) {
 }
 
 export async function writeSfpFromModuleId(moduleId: number) {
-  const base = features.api.baseUrl;
-  // 1. Fetch binary EEPROM
-  const res = await fetch(`${base}/v1/modules/${moduleId}/eeprom`);
-  if (!res.ok) throw new Error('Module binary data not found');
-  const buf = await res.arrayBuffer();
-  logLine(`Retrieved ${buf.byteLength} bytes of EEPROM data.`);
-  // 2. Initiate write
-  await sendBleCommand('[POST] /sif/write');
-  // 3. Optional ack wait
   try {
-    await waitForMessage('SIF write start', 5000);
-    logLine('Device ready to receive EEPROM data.');
-  } catch (e: any) {
-    logLine(`Warning: ${e?.message || String(e)}. Proceeding anyway...`);
-  }
-  // 4. Chunk write
-  await writeSfpFromBuffer(buf);
-  // 5. Completion ack
-  try {
-    await Promise.race([waitForMessage('SIF write stop', 10000), waitForMessage('SIF write complete', 10000)]);
-    logLine('Write operation completed.');
-  } catch (e: any) {
-    logLine(`Warning: ${e?.message || String(e)}. Write may have completed.`);
+    const base = features.api.baseUrl;
+    // 1. Fetch binary EEPROM with retry
+    const res = await fetchWithRetry(`${base}/v1/modules/${moduleId}/eeprom`);
+    if (!res.ok) {
+      throw new APIError('Module binary data not found', res.status);
+    }
+    const buf = await res.arrayBuffer();
+    logLine(`Retrieved ${buf.byteLength} bytes of EEPROM data.`);
+
+    // 2. Initiate write
+    await sendBleCommand('[POST] /sif/write');
+
+    // 3. Optional ack wait
+    try {
+      await waitForMessage('SIF write start', 5000);
+      logLine('Device ready to receive EEPROM data.');
+    } catch (e: any) {
+      logLine(`Warning: ${e?.message || String(e)}. Proceeding anyway...`);
+    }
+
+    // 4. Chunk write
+    await writeSfpFromBuffer(buf);
+
+    // 5. Completion ack
+    try {
+      await Promise.race([
+        waitForMessage('SIF write stop', 10000),
+        waitForMessage('SIF write complete', 10000),
+      ]);
+      logLine('Write operation completed.');
+    } catch (e: any) {
+      logLine(`Warning: ${e?.message || String(e)}. Write may have completed.`);
+    }
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError('Failed to write module', undefined, error);
   }
 }

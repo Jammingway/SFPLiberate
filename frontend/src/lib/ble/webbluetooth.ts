@@ -2,6 +2,18 @@ import type { SfpProfile, GattLikeCharacteristic } from './types';
 
 const textEncoder = new TextEncoder();
 
+/**
+ * Wrap a promise with a timeout to prevent indefinite hangs
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, operation: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${operation} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 export async function requestDeviceWithFallback(serviceUuid: string) {
   // First try filtered request; if it fails, fall back to acceptAllDevices
   try {
@@ -26,15 +38,43 @@ export async function requestAnyDeviceChooser() {
   return await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
 }
 
-export async function connectDirect(profile: SfpProfile) {
-  const device = await requestDeviceWithFallback(profile.serviceUuid);
+export async function connectDirect(profile: SfpProfile, onDisconnect?: () => void, timeout = 10000) {
+  const device: any = await withTimeout(
+    requestDeviceWithFallback(profile.serviceUuid),
+    timeout,
+    'Device selection'
+  );
+  
   device.addEventListener('gattserverdisconnected', () => {
-    // No-op; consumer can attach their own callbacks
+    if (onDisconnect) {
+      onDisconnect();
+    }
   });
-  const server = await device.gatt.connect();
-  const service = await server.getPrimaryService(profile.serviceUuid);
-  const writeCharacteristic = await service.getCharacteristic(profile.writeCharUuid);
-  const notifyCharacteristic = await service.getCharacteristic(profile.notifyCharUuid);
+  
+  const server: any = await withTimeout(
+    device.gatt.connect(),
+    timeout,
+    'GATT connection'
+  );
+  
+  const service: any = await withTimeout(
+    server.getPrimaryService(profile.serviceUuid),
+    timeout,
+    'Service discovery'
+  );
+  
+  const writeCharacteristic: any = await withTimeout(
+    service.getCharacteristic(profile.writeCharUuid),
+    timeout,
+    'Write characteristic discovery'
+  );
+  
+  const notifyCharacteristic: any = await withTimeout(
+    service.getCharacteristic(profile.notifyCharUuid),
+    timeout,
+    'Notify characteristic discovery'
+  );
+  
   return { device, server, service, writeCharacteristic, notifyCharacteristic } as const;
 }
 

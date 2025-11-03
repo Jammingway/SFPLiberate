@@ -11,6 +11,11 @@ export class BLEProxyClient {
   device: { name?: string; address?: string; services?: any[] } | null = null;
   private handlers = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>();
   private notificationCallbacks = new Map<string, (uuid: string, data: Uint8Array) => void>();
+  private reconnectAttempts = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = 5;
+  private reconnectDelay = 1000;
+  private shouldReconnect = true;
+  private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(wsUrl: string) {
     this.wsUrl = wsUrl;
@@ -23,25 +28,81 @@ export class BLEProxyClient {
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(this.wsUrl);
+
       this.ws.onopen = () => {
         this.connected = true;
+        this.reconnectAttempts = 0;
+        this.reconnectDelay = 1000;
+        console.log('[BLEProxyClient] Connected to WebSocket');
         resolve();
       };
+
       this.ws.onerror = (err) => {
-        reject(new Error('WebSocket connection failed'));
+        if (this.reconnectAttempts === 0) {
+          reject(new Error('WebSocket connection failed'));
+        }
       };
-      this.ws.onclose = () => {
+
+      this.ws.onclose = (event) => {
         this.connected = false;
         this.device = null;
+        console.log('[BLEProxyClient] WebSocket closed:', event.code, event.reason);
+
+        // Attempt reconnection if enabled
+        if (this.shouldReconnect && this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+          this.reconnectAttempts++;
+          console.log(
+            `[BLEProxyClient] Reconnecting (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`
+          );
+
+          this.reconnectTimeoutId = setTimeout(() => {
+            this.connect().catch((err) => {
+              console.error('[BLEProxyClient] Reconnection failed:', err);
+            });
+          }, this.reconnectDelay);
+
+          this.reconnectDelay *= 2; // Exponential backoff
+        } else if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+          console.error('[BLEProxyClient] Max reconnection attempts reached');
+          this.rejectAllHandlers(new Error('WebSocket connection lost'));
+        }
       };
+
       this.ws.onmessage = (evt) => {
         try {
-          this.handleMessage(JSON.parse(evt.data as string));
+          const message = JSON.parse(evt.data as string);
+          this.handleMessage(message);
         } catch (e) {
-          // ignore
+          console.error('[BLEProxyClient] Message parsing error:', e);
+          // Don't crash on bad messages, just log
         }
       };
     });
+  }
+
+  /**
+   * Disconnect and prevent automatic reconnection
+   */
+  disconnect() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.connected = false;
+    this.device = null;
+  }
+
+  /**
+   * Reject all pending operation handlers
+   */
+  private rejectAllHandlers(error: Error) {
+    this.handlers.forEach((handler) => handler.reject(error));
+    this.handlers.clear();
   }
 
   private handleMessage(message: any) {

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Request
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import base64
@@ -7,16 +7,91 @@ import os
 import json
 import uuid
 import hashlib
+from pathlib import Path
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Import our custom modules
 import database_manager
 import sfp_parser
+
+# Constants
+MAX_EEPROM_SIZE = 1024 * 1024  # 1MB max
+MIN_EEPROM_SIZE = 128  # Minimum 128 bytes for valid SFP EEPROM
+
+# Rate limiting setup
+limiter = Limiter(key_func=get_remote_address)
+
+def decode_and_validate_eeprom(base64_data: str) -> bytes:
+    """
+    Safely decode and validate EEPROM data.
+    Prevents memory exhaustion and validates size constraints.
+    """
+    try:
+        # Check encoded size first (rough estimate: base64 expands by ~33%)
+        if len(base64_data) > (MAX_EEPROM_SIZE * 4 / 3):
+            raise ValueError("EEPROM data too large")
+        
+        # Decode with validation
+        eeprom_data = base64.b64decode(base64_data, validate=True)
+        
+        # Validate decoded size
+        if len(eeprom_data) > MAX_EEPROM_SIZE:
+            raise ValueError(f"EEPROM data exceeds maximum size of {MAX_EEPROM_SIZE} bytes")
+        
+        # Validate minimum size (SFP EEPROM is typically 256 bytes minimum)
+        if len(eeprom_data) < MIN_EEPROM_SIZE:
+            raise ValueError(f"EEPROM data too small (minimum {MIN_EEPROM_SIZE} bytes)")
+        
+        return eeprom_data
+        
+    except (base64.binascii.Error, ValueError) as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid EEPROM data: {str(e)}"
+        )
+
+def safe_submission_path(inbox_root: str, inbox_id: str) -> Path:
+    """
+    Safely construct submission directory path.
+    Prevents directory traversal attacks.
+    """
+    # Normalize and validate inbox root
+    root = Path(inbox_root).resolve()
+    
+    # Validate inbox_id is a valid UUID (no path characters)
+    try:
+        uuid.UUID(inbox_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid submission ID"
+        )
+    
+    # Construct target path
+    target = (root / inbox_id).resolve()
+    
+    # Ensure target is within root (prevent directory traversal)
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid submission path"
+        )
+    
+    return target
 
 app = FastAPI(
     title="SFP Wizard Backend API",
     description="A backend to store and serve SFP module EEPROM data.",
     version="1.0.0"
 )
+
+# Configure rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 try:
     # Enable permissive CORS by default for easier local development.
@@ -83,11 +158,8 @@ async def save_new_module(module: SfpModuleIn):
     Save a newly read SFP module. The frontend sends the
     raw EEPROM data, and this endpoint parses it before saving.
     """
-    try:
-        # Decode the Base64 data from the frontend
-        eeprom_data = base64.b64decode(module.eeprom_data_base64)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid Base64 data.")
+    # Decode and validate the EEPROM data
+    eeprom_data = decode_and_validate_eeprom(module.eeprom_data_base64)
 
     # Use our parser to extract info
     parsed_info = sfp_parser.parse_sfp_data(eeprom_data)
@@ -124,25 +196,26 @@ class CommunitySubmissionOut(BaseModel):
     sha256: str
 
 @app.post("/api/submissions", response_model=CommunitySubmissionOut)
-async def submit_to_community(payload: CommunitySubmissionIn):
+@limiter.limit("5/hour")  # 5 submissions per hour per IP
+async def submit_to_community(request: Request, payload: CommunitySubmissionIn):
     """
     Accepts a user submission without requiring GitHub sign-in.
     Stores the submission in an inbox on disk for maintainers to triage and publish.
     """
-    try:
-        eeprom = base64.b64decode(payload.eeprom_data_base64)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid Base64 data.")
+    # Decode and validate the EEPROM data
+    eeprom = decode_and_validate_eeprom(payload.eeprom_data_base64)
 
     sha = hashlib.sha256(eeprom).hexdigest()
     inbox_root = os.environ.get("SUBMISSIONS_DIR", "/app/data/submissions")
     os.makedirs(inbox_root, exist_ok=True)
+    
+    # Generate safe submission path
     inbox_id = str(uuid.uuid4())
-    target_dir = os.path.join(inbox_root, inbox_id)
-    os.makedirs(target_dir, exist_ok=True)
+    target_dir = safe_submission_path(inbox_root, inbox_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     # Write files
-    with open(os.path.join(target_dir, "eeprom.bin"), "wb") as f:
+    with open(target_dir / "eeprom.bin", "wb") as f:
         f.write(eeprom)
     meta = {
         "name": payload.name,
@@ -153,7 +226,7 @@ async def submit_to_community(payload: CommunitySubmissionIn):
         "notes": payload.notes,
         "created_at": datetime.datetime.utcnow().isoformat() + "Z",
     }
-    with open(os.path.join(target_dir, "metadata.json"), "w") as f:
+    with open(target_dir / "metadata.json", "w") as f:
         json.dump(meta, f, indent=2)
 
     return {
