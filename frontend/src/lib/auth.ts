@@ -23,7 +23,7 @@ export function getAppwriteClient(): Client {
         const projectId = getAppwriteProjectId();
 
         if (!endpoint || !projectId) {
-            throw new Error('Appwrite configuration missing. Set NEXT_PUBLIC_APPWRITE_ENDPOINT and NEXT_PUBLIC_APPWRITE_PROJECT_ID');
+            throw new Error('Appwrite configuration missing. APPWRITE_SITE_API_ENDPOINT and APPWRITE_SITE_PROJECT_ID should be auto-injected by Appwrite Sites. This error should only occur in development.');
         }
 
         appwriteClient = new Client()

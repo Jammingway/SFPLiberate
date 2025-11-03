@@ -1,31 +1,53 @@
 /**
- * Feature Flags for Dual Deployment Strategy
+ * Feature Flags and Environment Detection
  *
- * This module provides a centralized feature flag system to support both:
- * 1. Standalone deployment (Docker, no auth)
- * 2. Appwrite cloud deployment (with authentication)
+ * This module provides automatic deployment mode detection:
+ * 1. Standalone deployment (Docker, self-hosted) - Default, no Appwrite variables
+ * 2. Appwrite cloud deployment (Public instance) - Auto-detected by presence of APPWRITE_SITE_* variables
+ *
+ * Deployment mode is AUTOMATICALLY DETECTED - no manual configuration needed.
  */
 
 export type DeploymentMode = 'standalone' | 'appwrite';
 
 /**
- * Get the current deployment mode from environment variables
+ * Get Appwrite endpoint (cloud only)
+ * Auto-injected by Appwrite Sites at build time
  */
-export function getDeploymentMode(): DeploymentMode {
-  const mode = process.env.NEXT_PUBLIC_DEPLOYMENT_MODE;
-  if (mode === 'appwrite') return 'appwrite';
-  return 'standalone'; // Default to standalone
+export function getAppwriteEndpoint(): string | undefined {
+  return process.env.APPWRITE_SITE_API_ENDPOINT;
 }
 
 /**
- * Check if running in standalone mode (Docker)
+ * Get Appwrite project ID (cloud only)
+ * Auto-injected by Appwrite Sites at build time
+ */
+export function getAppwriteProjectId(): string | undefined {
+  return process.env.APPWRITE_SITE_PROJECT_ID;
+}
+
+/**
+ * Get the current deployment mode
+ * Auto-detected based on presence of Appwrite environment variables
+ */
+export function getDeploymentMode(): DeploymentMode {
+  // If Appwrite variables are present, we're in Appwrite cloud deployment
+  if (getAppwriteEndpoint() && getAppwriteProjectId()) {
+    return 'appwrite';
+  }
+  // Otherwise, standalone (Docker) deployment
+  return 'standalone';
+}
+
+/**
+ * Check if running in standalone mode (Docker, self-hosted)
  */
 export function isStandalone(): boolean {
   return getDeploymentMode() === 'standalone';
 }
 
 /**
- * Check if running in Appwrite cloud mode
+ * Check if running in Appwrite cloud mode (public instance)
  */
 export function isAppwrite(): boolean {
   return getDeploymentMode() === 'appwrite';
@@ -33,56 +55,62 @@ export function isAppwrite(): boolean {
 
 /**
  * Check if authentication is enabled
- * (Only enabled for Appwrite deployment)
+ * Auto-enabled for Appwrite deployment, disabled for standalone
  */
 export function isAuthEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_ENABLE_AUTH === 'true';
+  // In Appwrite mode, check the feature flag (default true)
+  if (isAppwrite()) {
+    return process.env.APPWRITE_SITE_ENABLE_AUTH !== 'false';
+  }
+  // Standalone mode never has auth
+  return false;
 }
 
 /**
  * Check if Web Bluetooth is enabled
  */
 export function isWebBluetoothEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_ENABLE_WEB_BLUETOOTH !== 'false';
+  const envVar = isAppwrite() 
+    ? process.env.APPWRITE_SITE_ENABLE_WEB_BLUETOOTH 
+    : process.env.ENABLE_WEB_BLUETOOTH;
+  return envVar !== 'false'; // Default true
 }
 
 /**
  * Check if BLE Proxy mode is enabled
  */
 export function isBLEProxyEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_ENABLE_BLE_PROXY !== 'false';
+  const envVar = isAppwrite() 
+    ? process.env.APPWRITE_SITE_ENABLE_BLE_PROXY 
+    : process.env.ENABLE_BLE_PROXY;
+  return envVar !== 'false'; // Default true
 }
 
 /**
  * Check if community features are enabled
  */
 export function isCommunityFeaturesEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_ENABLE_COMMUNITY_FEATURES === 'true';
+  const envVar = isAppwrite() 
+    ? process.env.APPWRITE_SITE_ENABLE_COMMUNITY_FEATURES 
+    : process.env.ENABLE_COMMUNITY_FEATURES;
+  return envVar === 'true'; // Default false
 }
 
 /**
  * Get API base URL based on deployment mode
  */
 export function getApiUrl(): string {
-  return process.env.NEXT_PUBLIC_API_URL || '/api';
-}
-
-/**
- * Get Appwrite endpoint (cloud only)
- */
-export function getAppwriteEndpoint(): string | undefined {
-  return process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
-}
-
-/**
- * Get Appwrite project ID (cloud only)
- */
-export function getAppwriteProjectId(): string | undefined {
-  return process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
+  if (isAppwrite()) {
+    // Appwrite deployment uses backend Function URL
+    return process.env.APPWRITE_SITE_API_URL || '';
+  }
+  // Standalone uses proxied API
+  return '/api';
 }
 
 /**
  * Feature flag configuration object
+ * Values are computed at runtime based on deployment mode
  */
 export const features = {
   deployment: {
@@ -119,20 +147,20 @@ export function validateEnvironment(): {
   const errors: string[] = [];
   const mode = getDeploymentMode();
 
-  // Validate Appwrite configuration
+  // Validate Appwrite configuration (only if in Appwrite mode)
   if (mode === 'appwrite') {
     if (!getAppwriteEndpoint()) {
-      errors.push('NEXT_PUBLIC_APPWRITE_ENDPOINT is required for Appwrite deployment');
+      errors.push('APPWRITE_SITE_API_ENDPOINT is missing (should be auto-injected by Appwrite Sites)');
     }
     if (!getAppwriteProjectId()) {
-      errors.push('NEXT_PUBLIC_APPWRITE_PROJECT_ID is required for Appwrite deployment');
+      errors.push('APPWRITE_SITE_PROJECT_ID is missing (should be auto-injected by Appwrite Sites)');
+    }
+    if (!getApiUrl()) {
+      errors.push('APPWRITE_SITE_API_URL is required for backend Function URL');
     }
   }
 
-  // Validate API URL
-  if (!getApiUrl()) {
-    errors.push('NEXT_PUBLIC_API_URL is required');
-  }
+  // Standalone mode always valid (uses defaults)
 
   return {
     valid: errors.length === 0,

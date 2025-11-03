@@ -1,14 +1,43 @@
 name: Deploy to Appwrite Cloud
 
-# Deployment workflow for Appwrite static hosting
+# =============================================================================
+# MAINTAINER-ONLY: Appwrite Sites Deployment Workflow
+# =============================================================================
+# 
+# This workflow is for MAINTAINER USE ONLY to deploy the public hosted instance.
+# Self-hosters should use docker-compose.yml instead.
+#
+# DEPLOYMENT METHODS:
+# 1. Git Auto-Deploy (RECOMMENDED for production): Push to main triggers automatic deployment
+#    - Configure in Appwrite Console: Sites > Settings > Git Repository > Connect to main branch
+#    - Appwrite auto-injects environment variables (APPWRITE_SITE_API_ENDPOINT, APPWRITE_SITE_PROJECT_ID)
+#    - Control features via environment variables in Appwrite Console
+#    - No GitHub Actions needed - Appwrite handles build and deployment
+#    - See docs/APPWRITE_SITES_DEPLOYMENT.md for full setup
+# 
+# 2. Manual Deployment (THIS WORKFLOW): Upload tar.gz via Sites API
+#    - Useful for testing before enabling Git auto-deploy
+#    - Useful for deploying from non-main branches during development
+#    - Requires manual build and package steps
+#    - Uses GitHub secrets for Appwrite credentials
+# 
+# 3. CLI Deployment: Use `appwrite push sites` command (local development)
+#
+# FEATURE FLAG DEPLOYMENT STRATEGY:
+# - All code lives on main branch
+# - Features controlled by APPWRITE_SITE_ENABLE_* environment variables
+# - Deploy with flags OFF, then enable via Appwrite Console when ready
+# - No separate staging branches needed
+#
 # Only runs for feature/appwrite branches or manual triggers
-# Main branch releases MUST NOT include Appwrite references
+# Production uses Git Auto-Deploy from main branch
 
 on:
   push:
     branches:
       - 'feature/appwrite*'
       - 'feat/appwrite*'
+      - main  # Allow manual workflow from main for testing
   workflow_dispatch:
     inputs:
       environment:
@@ -25,19 +54,28 @@ env:
   FRONTEND_DIR: frontend
 
 jobs:
-  # Validation job - ensure we're not deploying from main
+  # Validation job - informational only
   validate:
     name: Validate Branch
     runs-on: ubuntu-latest
     steps:
       - name: Check branch
         run: |
+          echo "📋 Deploying from branch: ${{ github.ref }}"
+          echo ""
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "❌ ERROR: Appwrite deployment is not allowed from main branch"
-            echo "Appwrite features are controlled by feature flags and should not be in main releases"
-            exit 1
+            echo "ℹ️  NOTE: Manual deployment from main branch"
+            echo "ℹ️  Consider using Git Auto-Deploy for production:"
+            echo "   1. Connect site to GitHub in Appwrite Console"
+            echo "   2. Set production branch to 'main'"
+            echo "   3. Push to main for automatic deployments"
+            echo ""
+            echo "⚠️  This manual workflow is best for testing or non-production scenarios"
+          else
+            echo "✅ Feature branch deployment - manual workflow is appropriate"
           fi
-          echo "✅ Branch validation passed: ${{ github.ref }}"
+          echo ""
+          echo "✅ Validation passed"
 
   # Build and deploy to Appwrite
   deploy:
@@ -66,24 +104,20 @@ jobs:
       - name: Build static export for Appwrite
         working-directory: ${{ env.FRONTEND_DIR }}
         env:
-          # Deployment mode flags
-          DEPLOYMENT_MODE: appwrite
-          NEXT_PUBLIC_DEPLOYMENT_MODE: appwrite
+          # Appwrite Configuration (auto-injected by Appwrite Sites in production)
+          # For manual workflow deployment, provide these from secrets:
+          APPWRITE_SITE_API_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
+          APPWRITE_SITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
           
-          # Enable authentication for Appwrite
-          NEXT_PUBLIC_ENABLE_AUTH: true
+          # Backend API URL (Appwrite Function endpoint)
+          APPWRITE_SITE_API_URL: ${{ secrets.PUBLIC_API_URL || 'https://api.sfpliberate.com' }}
           
-          # Appwrite configuration
-          NEXT_PUBLIC_APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
-          NEXT_PUBLIC_APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
-          
-          # API URL (public backend endpoint)
-          NEXT_PUBLIC_API_URL: ${{ secrets.PUBLIC_API_URL || 'https://api.sfpliberate.com' }}
-          
-          # Feature flags
-          NEXT_PUBLIC_ENABLE_WEB_BLUETOOTH: true
-          NEXT_PUBLIC_ENABLE_BLE_PROXY: true
-          NEXT_PUBLIC_ENABLE_COMMUNITY_FEATURES: true
+          # Feature flags (control feature visibility)
+          # These should match production environment variables in Appwrite Console
+          APPWRITE_SITE_ENABLE_AUTH: true
+          APPWRITE_SITE_ENABLE_WEB_BLUETOOTH: true
+          APPWRITE_SITE_ENABLE_BLE_PROXY: true
+          APPWRITE_SITE_ENABLE_COMMUNITY_FEATURES: true
           
           # Build optimization
           NEXT_TELEMETRY_DISABLED: 1
@@ -116,39 +150,72 @@ jobs:
           
           echo "✅ Build output validation passed"
 
-      - name: Install Appwrite CLI
-        run: npm install -g appwrite-cli
-
-      - name: Configure Appwrite CLI
-        env:
-          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
-          APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
-          APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+      - name: Package build output
+        working-directory: ${{ env.FRONTEND_DIR }}
         run: |
-          echo "🔧 Configuring Appwrite CLI..."
-          appwrite client --endpoint "$APPWRITE_ENDPOINT"
-          appwrite client --key "$APPWRITE_API_KEY"
-          echo "✅ Appwrite CLI configured"
+          echo "📦 Packaging build output..."
+          cd out
+          tar --exclude code.tar.gz -czf ../code.tar.gz .
+          cd ..
+          echo "✅ Build packaged successfully"
+          ls -lh code.tar.gz
 
-      - name: Deploy to Appwrite
+      - name: Deploy to Appwrite Sites
         id: deploy
         working-directory: ${{ env.FRONTEND_DIR }}
         env:
           APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
           APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
           APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+          APPWRITE_SITE_ID: ${{ secrets.APPWRITE_SITE_ID }}
         run: |
-          echo "🚀 Deploying to Appwrite Cloud..."
+          echo "� Deploying to Appwrite Sites..."
           
-          # Deploy using Appwrite CLI
-          appwrite deploy function
+          # Install node-appwrite for API access
+          npm install node-appwrite
           
-          # Get deployment URL
-          DEPLOY_URL="${{ secrets.APPWRITE_ENDPOINT_URL }}/console/project-${{ secrets.APPWRITE_PROJECT_ID }}"
-          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          # Create deployment using Sites API
+          node << 'EOF'
+          const sdk = require('node-appwrite');
+          const fs = require('fs');
           
-          echo "✅ Deployment completed successfully"
-          echo "🌐 Deployment URL: $DEPLOY_URL"
+          const client = new sdk.Client()
+            .setEndpoint(process.env.APPWRITE_ENDPOINT)
+            .setProject(process.env.APPWRITE_PROJECT_ID)
+            .setKey(process.env.APPWRITE_API_KEY);
+          
+          const sites = new sdk.Sites(client);
+          
+          (async () => {
+            try {
+              console.log('� Uploading deployment...');
+              
+              const code = sdk.InputFile.fromPath('./code.tar.gz', 'code.tar.gz');
+              
+              const deployment = await sites.createDeployment({
+                siteId: process.env.APPWRITE_SITE_ID,
+                code: code,
+                activate: true, // Activate immediately after build
+              });
+              
+              console.log('✅ Deployment created successfully');
+              console.log(`Deployment ID: ${deployment.$id}`);
+              console.log(`Status: ${deployment.status}`);
+              
+              // Write deployment URL to output
+              const deployUrl = `${process.env.APPWRITE_ENDPOINT}/console/project-${process.env.APPWRITE_PROJECT_ID}/sites/site-${process.env.APPWRITE_SITE_ID}/deployment-${deployment.$id}`;
+              console.log(`🌐 Deployment URL: ${deployUrl}`);
+              
+              // Write to GitHub output
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `url=${deployUrl}\n`);
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `deployment_id=${deployment.$id}\n`);
+              
+            } catch (error) {
+              console.error('❌ Deployment failed:', error.message);
+              process.exit(1);
+            }
+          })();
+          EOF
 
       - name: Create deployment summary
         run: |
@@ -208,8 +275,16 @@ jobs:
              - \`APPWRITE_API_KEY\`
              - \`APPWRITE_ENDPOINT_URL\`
              - \`APPWRITE_PROJECT_ID\`
+             - \`APPWRITE_SITE_ID\` (get from Appwrite Console > Sites)
           3. Ensure you're not deploying from main branch
           4. Check Appwrite project configuration
           5. See docs/APPWRITE_DEPLOYMENT.md for detailed guide
+          
+          ### Alternative: Use Git Auto-Deploy
+          For production, connect your site to GitHub in Appwrite Console:
+          1. Go to Sites > Your Site > Settings > Git Repository
+          2. Click "Connect Git" and authorize GitHub
+          3. Select repository and production branch
+          4. Pushes to production branch will auto-deploy
           
           EOF

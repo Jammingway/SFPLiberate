@@ -16,6 +16,7 @@ Usage:
        export APPWRITE_BUCKET_ID=sfp_eeprom_data
     3. Run: python migrate_to_appwrite.py
 """
+import asyncio
 import os
 import sqlite3
 import sys
@@ -27,7 +28,7 @@ import appwrite_database_manager as appwrite_manager
 
 SQLITE_DB = os.environ.get("SQLITE_DATABASE_FILE", "sfp_library.db")
 
-def migrate_all_modules() -> Tuple[int, int, int]:
+async def migrate_all_modules() -> Tuple[int, int, int]:
     """
     Migrate all modules from SQLite to Appwrite.
     
@@ -79,7 +80,7 @@ def migrate_all_modules() -> Tuple[int, int, int]:
         print(f"  EEPROM Size: {len(eeprom_data)} bytes")
         
         try:
-            module_id, is_duplicate = appwrite_manager.add_module(
+            module_id, is_duplicate = await appwrite_manager.add_module(
                 name=name,
                 vendor=vendor,
                 model=model,
@@ -158,7 +159,7 @@ def main():
     
     # Run migration
     try:
-        total, migrated, duplicates = migrate_all_modules()
+        total, migrated, duplicates = asyncio.run(migrate_all_modules())
         
         # Verify
         verify_migration()

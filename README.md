@@ -2,19 +2,70 @@
 
 **A community-driven web tool to unlock the full potential of the Unifi SFP Wizard.**
 
-`SFPLiberate` is a companion web application for the **Ubiquiti SFP Wizard (UACC‑SFP‑Wizard)**, a portable, ESP32‑class SFP/SFP+ module programmer. The SFP Wizard performs reading/writing on‑device; meanwhile it broadcasts diagnostic logs and data over BLE. This app connects over Web Bluetooth to capture those broadcasts, parse module details, and save profiles to a local library you control. It aims to enable writing saved profiles back to modules, historical DDM logging (CSV, future), and a community repository of module data, compatibility notes, and statistics.
+`SFPLiberate` is a companion web application for the **Ubiquiti SFP Wizard (UACC‑SFP‑Wizard)**, a portable, ESP32‑class SFP/SFP+ module programmer. ### Device Pr-### Device Pr### Configur##-   The backend API docs are available at `http://localhost:8080/api/docs` when running.
 
-This project is built on a modern web stack, using your browser's **Web Bluetooth API** to subscribe to the SFP Wizard’s BLE logs/data and a **Dockerized Python backend** to manage your module library. The frontend is a **Next.js 16** app (with shadcn/ui) that proxies API calls at `/api` to the backend for a single‑origin experience.
+## Documentationcumentationmentation Device Profile (Service/Characteristic UUIDs)
 
-## Operating Modes
+- UUIDs are device-specific and are discovered automatically via the BLE Proxy inspect flow when enabled.
+- The profile (service UUID, write characteristic UUID, notify characteristic UUID) is saved to LocalStorage and used for subsequent connections.
+- You can persist a discovered profile into `.env` using the "Save as Deployment Defaults (requires docker restart)" action. This pre-seeds the profile on startup. Env keys: `SFP_SERVICE_UUID`, `SFP_WRITE_CHAR_UUID`, `SFP_NOTIFY_CHAR_UUID`.
+- For iOS/Safari users without BLE Proxy enabled, use a desktop browser or Bluefy (iOS) for direct Web Bluetooth access.
 
-`SFPLiberate` supports multiple connection and deployment modes:
+For full API documentation, see `docs/BLE_API_SPECIFICATION.md`.
 
-### BLE Connection Modes
+### Deployment
 
-- **Direct (Web Bluetooth in Browser)** — Default. Your browser connects directly to the SFP Wizard via the Web Bluetooth API (Chrome/Edge/Opera, Bluefy on iOS). No special backend access to Bluetooth is required.
-- **BLE Proxy (via Backend)** — Optional. For environments where Web Bluetooth is not available (e.g., Safari/iOS), the backend acts as a BLE proxy over WebSocket. The browser connects to the backend, which talks to the local Bluetooth adapter on the host. Adapter selection is supported in the UI when proxy mode is active.
-- **Standalone BLE Proxy** — New! Lightweight Docker container (~345MB) that runs locally on your machine, enabling iOS/Safari users to access SFP Wizard devices without self-hosting the full stack. Perfect for use with publicly-hosted UIs. See [ble-proxy-service/README.md](./ble-proxy-service/README.md) for details.
+For Docker deployment with BLE Proxy enabled, see `docs/DOCKER_DEPLOYMENT.md` for DBus mounts, USB passthrough, and environment configuration. To run without the BLE Proxy service, set `BLE_PROXY_ENABLED=false` in your `.env` file. Debuggingce/Characteristic UUIDs)
+
+- UUIDs are device-specific and are discovered automatically via the BLE Proxy inspect flow when enabled.
+- The profile (service UUID, write characteristic UUID, notify characteristic UUID) is saved to LocalStorage and used for subsequent connections.
+- You can persist a discovered profile into `.env` using the "Save as Deployment Defaults (requires docker restart)" action. This pre-seeds the profile on startup. Env keys: `SFP_SERVICE_UUID`, `SFP_WRITE_CHAR_UUID`, `SFP_NOTIFY_CHAR_UUID`.
+- For iOS/Safari users without BLE Proxy enabled, use a desktop browser or Bluefy (iOS) for direct Web Bluetooth access.
+
+For full API documentation, see `docs/BLE_API_SPECIFICATION.md`.
+
+### Deployment
+
+For Docker deployment with BLE Proxy enabled, see `docs/DOCKER_DEPLOYMENT.md` for DBus mounts, USB passthrough, and environment configuration. To run without the BLE Proxy service, set `BLE_PROXY_ENABLED=false` in your `.env` file.
+
+### Artifacts & Debuggingare device-specific and are discovered automatically via the BLE Proxy inspect flow when enabled.
+- The profile (service UUID, write characteristic UUID, notify characteristic UUID) is saved to LocalStorage and used for subsequent connections.
+- You can persist a discovered profile into `.env` using the "Save as Deployment Defaults (requires docker restart)" action. This pre-seeds the profile on startup. Env keys: `SFP_SERVICE_UUID`, `SFP_WRITE_CHAR_UUID`, `SFP_NOTIFY_CHAR_UUID`.
+- For iOS/Safari users without BLE Proxy enabled, use a desktop browser or Bluefy (iOS) for direct Web Bluetooth access.le (Service/Characteristic UUIDs)
+
+- UUIDs are device-specific and are discovered automatically via the BLE Proxy inspect flow when enabled.
+- The profile (service UUID, write characteristic UUID, notify characteristic UUID) is saved to LocalStorage and used for subsequent connections.
+- You can persist a discovered profile into `.env` using the "Save as Deployment Defaults (requires docker restart)" action. This pre-seeds the profile on startup. Env keys: `SFP_SERVICE_UUID`, `SFP_WRITE_CHAR_UUID`, `SFP_NOTIFY_CHAR_UUID`.
+- For iOS/Safari users without BLE Proxy, use a desktop browser or Bluefy (iOS) for direct Web Bluetooth access.
+
+For full API documentation, see `docs/BLE_API_SPECIFICATION.md`.
+
+### Deployment
+
+For Docker deployment with BLE Proxy enabled, see `docs/DOCKER_DEPLOYMENT.md` for DBus mounts, USB passthrough, and environment configuration. To run without the BLE Proxy service, set `BLE_PROXY_ENABLED=false` in your `.env` file.ard performs reading/writing on‑device while broadcasting diagnostic logs and data over BLE. This app connects over Web Bluetooth to capture those broadcasts, parse module details, and save profiles to a local library you control.
+
+This project is built on a modern web stack, using your browser's **Web Bluetooth API** to subscribe to the SFP Wizard's BLE logs/data and a **Dockerized Python backend (SQLite)** to manage your module library. The frontend is a **Next.js 16** app (with shadcn/ui) that proxies API calls at `/api` to the backend for a single‑origin experience.
+
+## Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/josiah-nelson/SFPLiberate.git
+cd SFPLiberate
+
+# Start the application
+docker-compose up --build
+
+# Access at http://localhost:8080
+```
+
+That's it! The app runs entirely on your machine with a local SQLite database. No cloud services or authentication required.
+
+## BLE Connection Modes
+
+- **Direct (Web Bluetooth in Browser)** — Default. Your browser connects directly to the SFP Wizard via the Web Bluetooth API (Chrome/Edge/Opera, Bluefy on iOS). No special backend access to Bluetooth required.
+- **BLE Proxy (via Backend)** — Optional. For environments where Web Bluetooth is not available (e.g., Safari/iOS), the backend acts as a BLE proxy over WebSocket. Enable with `BLE_PROXY_ENABLED=true` in docker-compose.yml.
+- **Standalone BLE Proxy** — Lightweight Docker container (~345MB) for iOS/Safari users. See [ble-proxy-service/README.md](./ble-proxy-service/README.md) for details.
 
 ## The Goal
 
@@ -51,17 +102,18 @@ This tool is the result of reverse‑engineering the SFP Wizard's Bluetooth LE (
 
 This architecture means the complex BLE communication happens securely in your browser, while your module library is safely managed and stored by a robust backend. When Proxy mode is enabled, the backend exposes a WebSocket for BLE operations on a local adapter.
 
-### Deployment Modes
+### Deployment
 
-- **Public Server (Appwrite + Standalone BLE Proxy):** Recommended for iOS/Safari users. UI hosted on Appwrite Cloud, module library in Appwrite database, users run a lightweight Docker container locally for BLE communication. Expected concurrency: ~2–5 concurrent users. Invite-only access with `admin` and `alpha` roles. See [docs/PUBLIC_DEPLOYMENT.md](./docs/PUBLIC_DEPLOYMENT.md) and [docs/APPWRITE_DATABASE.md](./docs/APPWRITE_DATABASE.md).
-- **Self‑Hosted (Full Stack):** Primary mode for advanced users. A single Docker Compose stack that serves the UI, manages a private local database (SQLite), and optionally exposes BLE Proxy over WebSocket for Safari/iOS users on the same LAN. Designed to work fully air‑gapped (no Internet access required). No auth by default on LAN. See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for setup guide.
+**Self-Hosted (Recommended):** Run the full stack locally with Docker Compose. This includes the UI, FastAPI backend with SQLite database, and optional BLE Proxy service for Safari/iOS support. Fully air-gapped capable—no internet or authentication required. Perfect for trusted LANs or personal use. See [Quick Start](#quick-start) below.
+
+**Public Instance:** The maintainer also hosts a public instance at [sfpliberate.com](https://sfpliberate.com) using Appwrite Cloud with invite-only access. For details about this deployment, see [docs/PUBLIC_DEPLOYMENT.md](./docs/PUBLIC_DEPLOYMENT.md).
 
 ### Security & Privacy
 
 - The app handles non‑sensitive, generic device data (SFP vendor/model/serial and binary EEPROM contents). Security is low‑priority by design.
-- **Public deployment** uses Appwrite authentication with invite-only access. Two roles: `admin` (full settings access) and `alpha` (early access users). BLE proxy settings are admin-only to prevent misconfiguration. See [docs/PUBLIC_DEPLOYMENT.md](./docs/PUBLIC_DEPLOYMENT.md).
-- **Standalone BLE Proxy** runs on user's local machine only (localhost binding). No internet exposure, no authentication needed. See [ble-proxy-service/README.md](./ble-proxy-service/README.md).
+- The **standalone BLE Proxy** runs on your local machine only (localhost binding). No internet exposure, no authentication needed. See [ble-proxy-service/README.md](./ble-proxy-service/README.md).
 - **Self‑hosted** deployments are intended for trusted LANs. If you expose the stack publicly, add reverse proxy auth, rate limiting, and TLS as needed.
+- For information about the maintainer's public hosted instance (which uses Appwrite authentication), see [docs/PUBLIC_DEPLOYMENT.md](./docs/PUBLIC_DEPLOYMENT.md).
 
 ## Current Features & Functionality
 
@@ -128,7 +180,7 @@ This project is fully functional for capturing and archiving profiles. Writing s
     -   **Implement:** Frontend `loadCommunityModulesTODO()` to fetch the index and display; backend `POST /api/modules/import` (TODO) to accept metadata + binary URL and persist. Use checksum to dedupe.
 
 -   [x] **BLE Proxy Mode:** Backend WS + adapter selection; UI auto‑detect and fallback for Safari/iOS
-    -   **Env‑driven:** `BLE_PROXY_ENABLED=true` enables WS proxy; default is disabled for public mode.
+    -   **Env‑driven:** `BLE_PROXY_ENABLED=true` enables WS proxy; default is `false` for standalone deployments.
     -   **Adapters:** Auto‑enumerate via DBus; allow selecting `hci0` etc. Optional default via env.
 
 -   [ ] **Air‑Gapped Mode Docs:** Document air‑gapped deployment (offline Docker images, no external calls), and validate no external network requests in default configuration.
@@ -156,7 +208,7 @@ This project is fully functional for capturing and archiving profiles. Writing s
 ### iOS/Safari Users
 Safari does not support Web Bluetooth. You have three options:
 
-1. **Standalone BLE Proxy** (Recommended) — Run a lightweight Docker container locally and connect to a public/Appwrite-hosted UI:
+1. **Standalone BLE Proxy** (Recommended) — Run a lightweight Docker container locally:
    ```bash
    docker run -d --name sfp-ble-proxy --network host \
      ghcr.io/sfpliberate/ble-proxy:latest
@@ -235,23 +287,32 @@ This project is built to run with a single command:
     
 -   The backend API docs are available at `http://localhost:8080/api/docs` when running.
 
-## Configuration
+## Documentation
 
-### Device Profile (Service/Characteristic UUIDs)
+Comprehensive documentation is available in the `docs/` directory:
 
-- UUIDs are device-specific and are now discovered automatically via the BLE Proxy inspect flow. The profile (service UUID, write characteristic UUID, notify characteristic UUID) is saved to LocalStorage and used for subsequent connections.
-- Self-hosted deployments can persist a discovered profile into `.env` using the “Save as Deployment Defaults (requires docker restart)” action. This pre-seeds the profile on startup. Env keys: `SFP_SERVICE_UUID`, `SFP_WRITE_CHAR_UUID`, `SFP_NOTIFY_CHAR_UUID`.
-- Public deployments disable Proxy; iOS/Safari users should use a desktop browser or Bluefy (iOS) for direct Web Bluetooth. Manual UUID entry is intentionally not supported.
+### Deployment Guides
+- **[APPWRITE_SITES_DEPLOYMENT.md](./docs/APPWRITE_SITES_DEPLOYMENT.md)** - Complete guide to deploying on Appwrite Sites (Git Auto-Deploy, Manual Upload, CLI methods)
+- **[DOCKER_DEPLOYMENT.md](./docs/DOCKER_DEPLOYMENT.md)** - Self-hosted Docker deployment with BLE proxy setup
+- **[DEPLOYMENT.md](./docs/DEPLOYMENT.md)** - General deployment overview and recommendations
 
-For full API documentation, see `docs/BLE_API_SPECIFICATION.md`.
+### Configuration
+- **[ENVIRONMENT_VARIABLES.md](./docs/ENVIRONMENT_VARIABLES.md)** - Complete reference for all environment variables across deployment modes
+- **[APPWRITE_CONFIGURATION_UPDATE.md](./docs/APPWRITE_CONFIGURATION_UPDATE.md)** - Migration guide for Appwrite auto-injected variables
 
-### Deployment (Docker)
+### API & Technical
+- **[BLE_API_SPECIFICATION.md](./docs/BLE_API_SPECIFICATION.md)** - BLE protocol specification and reverse-engineering notes
+- **[APPWRITE_DATABASE_IMPLEMENTATION.md](./docs/APPWRITE_DATABASE_IMPLEMENTATION.md)** - Backend database implementation details
+- **[AUTH_SYSTEM.md](./docs/AUTH_SYSTEM.md)** - Appwrite authentication integration
 
-For self‑hosted with BLE Proxy, see `docs/DOCKER_DEPLOYMENT.md` for DBus mounts, USB passthrough, and env keys. For public hosting, leave `BLE_PROXY_ENABLED=false` and deploy without Bluetooth permissions; expect ~2–5 concurrent users.
+### Development
+- **[BLUETOOTH_MIGRATION_GUIDE.md](./docs/BLUETOOTH_MIGRATION_GUIDE.md)** - Guide for Bluetooth API changes
+- **[BLUETOOTH_TESTING_GUIDE.md](./docs/BLUETOOTH_TESTING_GUIDE.md)** - Testing procedures for BLE features
+- **[MODERNIZATION_SUMMARY.md](./docs/MODERNIZATION_SUMMARY.md)** - Architecture modernization overview
 
-### Artifacts & Debugging
-
-The `artifacts/` folder includes nRF Connect captures (txt/csv) and device debug tarballs with logs and example EEPROM data. These are useful for reverse‑engineering and test verification. A future "Replay from Artifacts" debug mode will allow simulating device responses without hardware.
+### BLE Proxy
+- **[STANDALONE_BLE_PROXY_SERVICE.md](./docs/STANDALONE_BLE_PROXY_SERVICE.md)** - Standalone BLE proxy for iOS/Safari support
+- **[ble-proxy-service/README.md](./ble-proxy-service/README.md)** - BLE proxy service documentation
 
 ## Disclaimer
 

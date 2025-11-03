@@ -39,18 +39,12 @@ services:
 
     # Environment variables
     environment:
-      # Deployment Mode (standalone=SQLite, appwrite=Cloud Database)
-      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-standalone}
-      # SQLite configuration (standalone mode only)
+      # Deployment Mode (standalone=SQLite only for Docker deployments)
+      # Note: Appwrite cloud deployment uses backend Functions, not Docker
+      - DEPLOYMENT_MODE=standalone
+      # SQLite configuration
       - DATABASE_FILE=/app/data/sfp_library.db
       - SUBMISSIONS_DIR=/app/data/submissions
-      # Appwrite configuration (appwrite mode only)
-      - APPWRITE_ENDPOINT=${APPWRITE_ENDPOINT:-}
-      - APPWRITE_PROJECT_ID=${APPWRITE_PROJECT_ID:-}
-      - APPWRITE_API_KEY=${APPWRITE_API_KEY:-}
-      - APPWRITE_DATABASE_ID=${APPWRITE_DATABASE_ID:-sfp_library}
-      - APPWRITE_COLLECTION_ID=${APPWRITE_COLLECTION_ID:-sfp_modules}
-      - APPWRITE_BUCKET_ID=${APPWRITE_BUCKET_ID:-sfp_eeprom_data}
       # Application settings
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - PYTHONUNBUFFERED=1
@@ -139,12 +133,10 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-production}
       # Backend URL used for Next.js rewrites in standalone mode
       - BACKEND_URL=http://backend
-      # Client-side deployment flags
-      - NEXT_PUBLIC_DEPLOYMENT_MODE=standalone
-      # Default API base (proxied by Next.js)
-      - NEXT_PUBLIC_API_URL=/api
+      # Note: Deployment mode is AUTO-DETECTED by frontend
+      # Standalone mode when APPWRITE_SITE_* variables are absent (default here)
 
-    # Ports exposed to host
+      # Ports exposed to host
     ports:
       - "${HOST_PORT:-8080}:3000"
 
@@ -164,7 +156,7 @@ services:
 
     # Health check
     healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/" ]
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3000/', r => process.exit(r.statusCode < 500 ? 0 : 1))" ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -199,12 +191,13 @@ networks:
       - "com.sfpliberate.network=internal"
 
 volumes:
+  # Named volume for backend data persistence
+  # Docker manages this volume automatically - no need to create directories manually
   backend_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_PATH:-./data}
     labels:
       - "com.sfpliberate.volume=backend-data"
       - "com.sfpliberate.backup=true"
+    # Volume is stored in Docker's volume directory (e.g., /var/lib/docker/volumes/)
+    # To backup: docker run --rm -v sfpliberate_backend_data:/data -v $(pwd):/backup alpine tar czf /backup/backup.tar.gz /data
+    # To restore: docker run --rm -v sfpliberate_backend_data:/data -v $(pwd):/backup alpine tar xzf /backup/backup.tar.gz

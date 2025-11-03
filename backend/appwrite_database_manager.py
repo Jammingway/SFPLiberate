@@ -151,7 +151,7 @@ async def add_module(name: str, vendor: str, model: str, serial: str, eeprom_dat
         # If document creation fails, clean up the uploaded file
         try:
             storage.delete_file(APPWRITE_BUCKET_ID, file_id)
-        except:
+        except AppwriteException:
             pass  # Best effort cleanup
         raise RuntimeError(f"Failed to create module document: {e.message}")
 
@@ -159,30 +159,49 @@ def get_all_modules() -> List[Dict[str, Any]]:
     """
     Fetches the list of all saved modules (metadata only, no EEPROM data).
     Returns list of dicts with keys: id, name, vendor, model, serial, created_at
+    
+    Uses pagination to fetch all modules (not limited to 100).
     """
     db = get_databases_service()
     
     try:
-        result = db.list_documents(
-            database_id=APPWRITE_DATABASE_ID,
-            collection_id=APPWRITE_COLLECTION_ID,
-            queries=[
-                Query.order_asc("name"),
-                Query.limit(100)  # Pagination - adjust as needed
-            ]
-        )
-        
         modules = []
-        for doc in result['documents']:
-            # Convert Appwrite document to SQLite-compatible format
-            modules.append({
-                "id": int(doc['sha256'][:8], 16),  # Use first 8 chars of SHA as integer ID
-                "name": doc.get('name', ''),
-                "vendor": doc.get('vendor', ''),
-                "model": doc.get('model', ''),
-                "serial": doc.get('serial', ''),
-                "created_at": doc.get('created_at', doc.get('$createdAt', ''))
-            })
+        offset = 0
+        limit = 100  # Fetch in batches of 100
+        
+        while True:
+            result = db.list_documents(
+                database_id=APPWRITE_DATABASE_ID,
+                collection_id=APPWRITE_COLLECTION_ID,
+                queries=[
+                    Query.order_asc("name"),
+                    Query.limit(limit),
+                    Query.offset(offset)
+                ]
+            )
+            
+            if not result['documents']:
+                # No more documents to fetch
+                break
+            
+            for doc in result['documents']:
+                # Convert Appwrite document to SQLite-compatible format
+                modules.append({
+                    "id": int(doc['sha256'][:8], 16),  # Use first 8 chars of SHA as integer ID
+                    "name": doc.get('name', ''),
+                    "vendor": doc.get('vendor', ''),
+                    "model": doc.get('model', ''),
+                    "serial": doc.get('serial', ''),
+                    "created_at": doc.get('created_at', doc.get('$createdAt', ''))
+                })
+            
+            # Check if we've fetched all documents
+            if len(result['documents']) < limit:
+                # Last page - we're done
+                break
+            
+            # Move to next page
+            offset += limit
         
         return modules
     except AppwriteException as e:

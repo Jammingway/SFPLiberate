@@ -108,7 +108,6 @@ class BLEProxyHandler:
         """Initialize handler."""
         self.websocket = websocket
         self.ble_manager = None
-        self.notification_task = None
 
     async def handle_connection(self):
         """Main handler for WebSocket connection."""
@@ -124,12 +123,7 @@ class BLEProxyHandler:
                 await self._send_error(f"BLE not available: {e}")
                 return
 
-            # Start notification task
-            self.notification_task = asyncio.create_task(
-                self._notification_handler()
-            )
-
-            # Handle incoming messages
+            # Handle incoming messages (notifications are handled via callbacks)
             while True:
                 data = await self.websocket.receive_text()
                 await self._handle_message(data)
@@ -177,14 +171,11 @@ class BLEProxyHandler:
         """Handle BLE connect request."""
         try:
             logger.info("Connecting to device...")
-            await self.ble_manager.connect(
+            device_info = await self.ble_manager.connect(
                 service_uuid=msg.service_uuid,
                 device_address=msg.device_address,
                 adapter=msg.adapter
             )
-
-            # Get device info
-            device_info = self.ble_manager.get_device_info()
             
             response = BLEConnectedMessage(
                 device_name=device_info.get("name", "Unknown"),
@@ -217,7 +208,7 @@ class BLEProxyHandler:
             # Decode base64 data
             data = base64.b64decode(msg.data)
             
-            await self.ble_manager.write_characteristic(
+            await self.ble_manager.write(
                 characteristic_uuid=msg.characteristic_uuid,
                 data=data,
                 with_response=msg.with_response
@@ -238,7 +229,26 @@ class BLEProxyHandler:
     async def _handle_subscribe(self, msg: BLESubscribeMessage):
         """Handle subscribe to notifications request."""
         try:
-            await self.ble_manager.start_notify(msg.characteristic_uuid)
+            # Define callback that forwards notifications to WebSocket
+            def notification_callback(char_uuid: str, data: bytes):
+                """Forward notification to WebSocket."""
+                try:
+                    # Encode binary data as base64
+                    data_b64 = base64.b64encode(data).decode("ascii")
+                    
+                    notif_msg = BLENotificationMessage(
+                        characteristic_uuid=char_uuid,
+                        data=data_b64
+                    )
+                    # Schedule sending on event loop
+                    asyncio.create_task(self._send_message(notif_msg.model_dump()))
+                except Exception as e:
+                    logger.error("Error forwarding notification: %s", e)
+            
+            await self.ble_manager.subscribe(
+                msg.characteristic_uuid,
+                notification_callback
+            )
             
             status = BLEStatusMessage(
                 status="subscribed",
@@ -254,7 +264,7 @@ class BLEProxyHandler:
     async def _handle_unsubscribe(self, msg: BLEUnsubscribeMessage):
         """Handle unsubscribe request."""
         try:
-            await self.ble_manager.stop_notify(msg.characteristic_uuid)
+            await self.ble_manager.unsubscribe(msg.characteristic_uuid)
             
             status = BLEStatusMessage(
                 status="unsubscribed",
@@ -285,32 +295,6 @@ class BLEProxyHandler:
             logger.error("Discovery failed: %s", e)
             await self._send_error(f"Discovery failed: {e}")
 
-    async def _notification_handler(self):
-        """Background task to forward BLE notifications to WebSocket."""
-        try:
-            while True:
-                if self.ble_manager and self.ble_manager.is_connected():
-                    # Get pending notifications
-                    notifications = await self.ble_manager.get_notifications()
-                    
-                    for notif in notifications:
-                        # Encode binary data as base64
-                        data_b64 = base64.b64encode(notif["data"]).decode("ascii")
-                        
-                        msg = BLENotificationMessage(
-                            characteristic_uuid=notif["uuid"],
-                            data=data_b64
-                        )
-                        await self._send_message(msg.model_dump())
-                
-                # Small delay to avoid busy waiting
-                await asyncio.sleep(0.1)
-
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error("Notification handler error: %s", e)
-
     async def _send_message(self, message: dict[str, Any]):
         """Send message to WebSocket client."""
         try:
@@ -325,16 +309,8 @@ class BLEProxyHandler:
 
     async def _cleanup(self):
         """Clean up resources."""
-        # Cancel notification task
-        if self.notification_task:
-            self.notification_task.cancel()
-            try:
-                await self.notification_task
-            except asyncio.CancelledError:
-                pass
-
-        # Disconnect BLE
-        if self.ble_manager and self.ble_manager.is_connected():
+        # Disconnect BLE (will automatically unsubscribe from all characteristics)
+        if self.ble_manager and self.ble_manager.is_connected:
             try:
                 await self.ble_manager.disconnect()
             except Exception as e:

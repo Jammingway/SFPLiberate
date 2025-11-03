@@ -27,7 +27,7 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 
 # Copy source files (cached separately from dependencies)
-COPY --link package.json next.config.ts tsconfig.json ./
+COPY --link package.json yarn.lock* package-lock.json* pnpm-lock.yaml* next.config.ts tsconfig.json ./
 COPY --link public ./public
 COPY --link src ./src
 
@@ -55,12 +55,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy public assets
+# Copy public assets (needed for static files)
 COPY --from=builder /app/public ./public
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
+# The standalone folder contains everything needed: server.js, .next, node_modules, package.json
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+
+# Copy static assets into the standalone .next directory
+# This is required because standalone mode doesn't include static files by default
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Switch to non-root user
@@ -71,9 +75,10 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Health check
+# Health check - check if Next.js is responding (not a specific endpoint)
+# Use the root path since /api/health may not exist
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
+    CMD node -e "require('http').get('http://localhost:3000/', (r) => {if(r.statusCode >= 200 && r.statusCode < 500) process.exit(0); else process.exit(1);})"
 
 # server.js is created by next build from the standalone output
 # https://nextjs.org/docs/pages/api-reference/next-config-js/output

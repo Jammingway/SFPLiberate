@@ -303,38 +303,66 @@ done
 
 ### Option 2: Automated Migration Script
 
-Create `backend/migrate_to_appwrite.py`:
+The project includes a complete migration script at `backend/migrate_to_appwrite.py` that performs a direct database-to-database migration.
 
-```python
-import sqlite3
-import base64
-import requests
-import os
+**Prerequisites:**
+1. Set up Appwrite database first (follow steps above)
+2. Configure environment variables for both SQLite and Appwrite
 
-SQLITE_DB = os.environ.get("DATABASE_FILE", "sfp_library.db")
-API_URL = "https://api.sfpliberate.com"  # Your public API
-
-conn = sqlite3.connect(SQLITE_DB)
-conn.row_factory = sqlite3.Row
-cursor = conn.cursor()
-
-cursor.execute("SELECT * FROM sfp_modules")
-for row in cursor.fetchall():
-    payload = {
-        "name": row['name'],
-        "eeprom_data_base64": base64.b64encode(row['eeprom_data']).decode()
-    }
-    response = requests.post(f"{API_URL}/api/modules", json=payload)
-    print(f"Migrated: {row['name']} - {response.json()}")
-
-conn.close()
-```
-
-Run migration:
+**Run migration:**
 ```bash
 cd backend
-export DATABASE_FILE=/app/data/sfp_library.db
+
+# Set SQLite database path
+export SQLITE_DATABASE_FILE=/path/to/sfp_library.db
+
+# Set Appwrite configuration
+export APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
+export APPWRITE_PROJECT_ID=your-project-id
+export APPWRITE_API_KEY=your-api-key
+export APPWRITE_DATABASE_ID=sfp_library
+export APPWRITE_COLLECTION_ID=sfp_modules
+export APPWRITE_BUCKET_ID=sfp_eeprom_data
+
+# Run migration
 python migrate_to_appwrite.py
+```
+
+**Features:**
+- ✅ Automatic deduplication via SHA-256 hash
+- ✅ Progress tracking with detailed output
+- ✅ Automatic verification after migration
+- ✅ Error handling with rollback on failure
+- ✅ Batch processing for large datasets
+
+**Example output:**
+```
+================================================================================
+  SFPLiberate: SQLite → Appwrite Migration Tool
+================================================================================
+
+📂 Reading from SQLite database: /app/data/sfp_library.db
+🔗 Testing Appwrite connection...
+✓ Appwrite database connected: sfp_library/sfp_modules
+
+📊 Found 25 modules to migrate
+
+[1/25] Migrating: Cisco 10G SFP+
+  Vendor: CISCO-AVAGO
+  Model: AFBR-709SMZ
+  Serial: ABC123456
+  EEPROM Size: 256 bytes
+  ✅ Migrated successfully (ID: 1a2b3c4d)
+
+...
+
+📈 Migration Summary:
+  Total modules in SQLite: 25
+  Successfully migrated: 25
+  Duplicates (skipped): 0
+  Failed: 0
+
+✨ Migration completed successfully!
 ```
 
 ---
