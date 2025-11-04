@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     esphome_proxy_host: str | None = None
     esphome_proxy_port: int = 6053
     esphome_proxy_name: str | None = None
+    esphome_proxy_password: str = ""  # ESPHome API password (empty = no auth)
+    # Timing configuration
+    esphome_sse_interval: int = 1  # SSE device stream update interval (seconds)
+    esphome_device_expiry: int = 30  # Device expiry timeout (seconds)
+    esphome_cache_window: float = 2.0  # Advertisement deduplication window (seconds)
+    esphome_discovery_loop_interval: int = 5  # Discovery loop interval (seconds)
+    esphome_cleanup_loop_interval: int = 10  # Cleanup loop interval (seconds)
 
     # Public mode (hide proxy UI and advanced options by default)
     public_mode: bool = False

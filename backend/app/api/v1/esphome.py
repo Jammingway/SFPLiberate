@@ -49,6 +49,8 @@ async def device_stream():
     """
     async def event_generator():
         """Generate SSE events with discovered devices."""
+        from app.config import get_settings
+        settings = get_settings()
         service = ESPHomeProxyService()
 
         try:
@@ -62,7 +64,7 @@ async def device_stream():
                 # SSE format: "data: {json}\n\n"
                 yield f"data: {json_data}\n\n"
 
-                await asyncio.sleep(1)
+                await asyncio.sleep(settings.esphome_sse_interval)
 
         except asyncio.CancelledError:
             logger.info("Device stream cancelled")

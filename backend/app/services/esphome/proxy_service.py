@@ -30,13 +30,16 @@ class ESPHomeProxyService:
         if hasattr(self, "_initialized"):
             return
 
+        from app.config import get_settings
+        settings = get_settings()
+
         self._initialized = True
         self.proxy_manager = ProxyManager()
-        self.device_manager = DeviceManager(device_expiry_seconds=30)
+        self.device_manager = DeviceManager(device_expiry_seconds=settings.esphome_device_expiry)
         self._discovery_task: Optional[asyncio.Task] = None
         self._cleanup_task: Optional[asyncio.Task] = None
         self._advertisement_cache: Dict[Tuple[str, int], float] = {}
-        self._cache_window = 2.0  # seconds
+        self._cache_window = settings.esphome_cache_window
 
         logger.info("ESPHomeProxyService initialized")
 
@@ -98,6 +101,9 @@ class ESPHomeProxyService:
 
     async def _run_discovery_loop(self) -> None:
         """Main discovery loop - connects to proxies and subscribes to advertisements."""
+        from app.config import get_settings
+        settings = get_settings()
+
         while True:
             try:
                 # Connect to all discovered proxies
@@ -106,20 +112,23 @@ class ESPHomeProxyService:
                 )
 
                 # Wait before next check
-                await asyncio.sleep(30)
+                await asyncio.sleep(settings.esphome_discovery_loop_interval)
 
             except asyncio.CancelledError:
                 logger.info("Discovery loop cancelled")
                 raise
             except Exception as e:
                 logger.error(f"Error in discovery loop: {e}", exc_info=True)
-                await asyncio.sleep(10)
+                await asyncio.sleep(settings.esphome_discovery_loop_interval)
 
     async def _run_cleanup_loop(self) -> None:
         """Periodic cleanup of stale devices and cache entries."""
+        from app.config import get_settings
+        settings = get_settings()
+
         while True:
             try:
-                await asyncio.sleep(60)  # Run every minute
+                await asyncio.sleep(settings.esphome_cleanup_loop_interval)
 
                 # Cleanup stale devices
                 self.device_manager.cleanup_stale_devices()
@@ -244,11 +253,14 @@ class ESPHomeProxyService:
 
         logger.info(f"Using proxy '{proxy_name}' to connect to {mac_address}")
 
+        from app.config import get_settings
+        settings = get_settings()
+
         try:
             # Connect to device with timeout
             await asyncio.wait_for(
                 client.bluetooth_device_connect(mac_address),
-                timeout=30.0
+                timeout=settings.esphome_connection_timeout
             )
 
             logger.info(f"Connected to device {mac_address}")
@@ -256,7 +268,7 @@ class ESPHomeProxyService:
             # Get GATT services
             services = await asyncio.wait_for(
                 client.bluetooth_gatt_get_services(mac_address),
-                timeout=30.0
+                timeout=settings.esphome_connection_timeout
             )
 
             logger.debug(f"Retrieved {len(services)} services from device")

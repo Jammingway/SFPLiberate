@@ -58,10 +58,9 @@ class ProxyManager:
         elif state_change is ServiceStateChange.Removed:
             proxy_name = name.replace(f".{service_type}", "")
             if proxy_name in self.proxies:
-                # Mark as disconnected
+                # Actively disconnect the client to release resources
                 if proxy_name in self.clients:
-                    # Will be cleaned up on next connect_all() call
-                    pass
+                    asyncio.create_task(self.disconnect_proxy(proxy_name))
                 del self.proxies[proxy_name]
                 logger.info(f"ESPHome proxy removed: {proxy_name}")
 
@@ -104,6 +103,9 @@ class ProxyManager:
             name: Proxy name (identifier)
             proxy: Proxy metadata
         """
+        from app.config import get_settings
+        settings = get_settings()
+
         try:
             logger.info(f"Connecting to ESPHome proxy: {name} @ {proxy.address}:{proxy.port}")
 
@@ -111,13 +113,13 @@ class ProxyManager:
             client = APIClient(
                 address=proxy.address,
                 port=proxy.port,
-                password="",  # Default ESPHome password (empty)
+                password=settings.esphome_proxy_password,
             )
 
             # Connect with timeout
             await asyncio.wait_for(
                 client.connect(login=True),
-                timeout=30.0
+                timeout=settings.esphome_connection_timeout
             )
 
             logger.info(f"Connected to proxy: {name}")

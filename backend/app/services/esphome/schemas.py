@@ -1,9 +1,23 @@
 """Pydantic models for ESPHome Bluetooth Proxy integration."""
 
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from typing import Annotated, Optional
+from pydantic import AfterValidator, BaseModel, Field
 import re
+
+
+def _validate_mac_address(v: str) -> str:
+    """Validate and normalize MAC address format."""
+    v = v.upper().replace("-", ":")
+    if not re.match(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$", v):
+        raise ValueError(
+            "Invalid MAC address format. Expected format: AA:BB:CC:DD:EE:FF"
+        )
+    return v
+
+
+# Reusable MAC address type with validation
+MACAddress = Annotated[str, AfterValidator(_validate_mac_address)]
 
 
 class ESPHomeProxy(BaseModel):
@@ -20,7 +34,7 @@ class ESPHomeProxy(BaseModel):
 class DiscoveredDevice(BaseModel):
     """Represents a discovered BLE device (SFP Wizard)."""
 
-    mac_address: str = Field(..., description="BLE MAC address")
+    mac_address: MACAddress = Field(..., description="BLE MAC address")
     name: str = Field(..., description="Device name from advertisement")
     rssi: int = Field(..., description="Signal strength (dBm)")
     best_proxy: str = Field(..., description="Proxy name with best RSSI")
@@ -29,36 +43,13 @@ class DiscoveredDevice(BaseModel):
         None, description="Raw advertisement data"
     )
 
-    @field_validator("mac_address")
-    @classmethod
-    def validate_mac_address(cls, v: str) -> str:
-        """Validate MAC address format."""
-        # Normalize to uppercase with colons
-        v = v.upper().replace("-", ":")
-        if not re.match(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$", v):
-            raise ValueError(
-                "Invalid MAC address format. Expected format: AA:BB:CC:DD:EE:FF"
-            )
-        return v
-
 
 class DeviceConnectionRequest(BaseModel):
     """Request to connect to a BLE device and retrieve UUIDs."""
 
-    mac_address: str = Field(
+    mac_address: MACAddress = Field(
         ..., description="BLE MAC address (format: AA:BB:CC:DD:EE:FF)"
     )
-
-    @field_validator("mac_address")
-    @classmethod
-    def validate_mac_address(cls, v: str) -> str:
-        """Validate MAC address format."""
-        v = v.upper().replace("-", ":")
-        if not re.match(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$", v):
-            raise ValueError(
-                "Invalid MAC address format. Expected format: AA:BB:CC:DD:EE:FF"
-            )
-        return v
 
 
 class DeviceConnectionResponse(BaseModel):
@@ -87,7 +78,7 @@ class ESPHomeStatus(BaseModel):
 class BLEDeviceProfile(BaseModel):
     """BLE device profile for UUID persistence."""
 
-    mac_address: str = Field(..., description="Device MAC address (primary key)")
+    mac_address: MACAddress = Field(..., description="Device MAC address (primary key)")
     service_uuid: str = Field(..., description="GATT service UUID")
     notify_char_uuid: str = Field(..., description="Notify characteristic UUID")
     write_char_uuid: str = Field(..., description="Write characteristic UUID")
@@ -99,34 +90,12 @@ class BLEDeviceProfile(BaseModel):
         default_factory=datetime.utcnow, description="Profile last update time"
     )
 
-    @field_validator("mac_address")
-    @classmethod
-    def validate_mac_address(cls, v: str) -> str:
-        """Validate MAC address format."""
-        v = v.upper().replace("-", ":")
-        if not re.match(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$", v):
-            raise ValueError(
-                "Invalid MAC address format. Expected format: AA:BB:CC:DD:EE:FF"
-            )
-        return v
-
 
 class BLEDeviceProfileCreate(BaseModel):
     """Request to create/update a device profile."""
 
-    mac_address: str
+    mac_address: MACAddress
     service_uuid: str
     notify_char_uuid: str
     write_char_uuid: str
     device_name: Optional[str] = None
-
-    @field_validator("mac_address")
-    @classmethod
-    def validate_mac_address(cls, v: str) -> str:
-        """Validate MAC address format."""
-        v = v.upper().replace("-", ":")
-        if not re.match(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$", v):
-            raise ValueError(
-                "Invalid MAC address format. Expected format: AA:BB:CC:DD:EE:FF"
-            )
-        return v
