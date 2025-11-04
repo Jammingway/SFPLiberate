@@ -46,7 +46,7 @@ services:
     # Publish the API to the host so the frontend (bridge networking by default) can proxy without
     # an intermediate reverse-proxy container. Override BACKEND_HOST_PORT if needed.
     ports:
-      - "${BACKEND_HOST_PORT:-8081}:80"
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8081}:80"
 
     # Network
     networks:
@@ -114,7 +114,7 @@ services:
       - PORT=${FRONTEND_PORT:-3000}
 
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${FRONTEND_HOST_PORT:-8080}:3000"
 
     # Resource limits
     deploy:

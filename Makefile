@@ -129,7 +129,7 @@ health: ## Check service health status
 	@curl -f http://localhost:${BACKEND_HOST_PORT:-8081}/api/modules > /dev/null 2>&1 && echo "$(GREEN)✓ Backend is healthy$(RESET)" || echo "$(YELLOW)✗ Backend is unhealthy$(RESET)"
 	@echo ""
 	@echo "$(BLUE)Frontend Health:$(RESET)"
-	@curl -f http://localhost:${FRONTEND_PORT:-3000}/ > /dev/null 2>&1 && echo "$(GREEN)✓ Frontend is healthy$(RESET)" || echo "$(YELLOW)✗ Frontend is unhealthy$(RESET)"
+	@curl -f http://localhost:${FRONTEND_HOST_PORT:-8080}/ > /dev/null 2>&1 && echo "$(GREEN)✓ Frontend is healthy$(RESET)" || echo "$(YELLOW)✗ Frontend is unhealthy$(RESET)"
 
 status: health ## Alias for 'make health'
 
