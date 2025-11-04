@@ -1,7 +1,7 @@
 export type UUID = string;
 
-export type ConnectionMode = 'auto' | 'web-bluetooth' | 'proxy';
-export type ResolvedMode = 'direct' | 'proxy' | 'none';
+export type ConnectionMode = 'auto' | 'web-bluetooth' | 'proxy' | 'esphome-proxy';
+export type ResolvedMode = 'direct' | 'proxy' | 'esphome-proxy' | 'none';
 
 export interface SfpProfile {
   serviceUuid: UUID;

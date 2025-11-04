@@ -37,10 +37,15 @@ class Settings(BaseSettings):
     enable_community_import: bool = False
     community_index_url: str = ""
 
-    # BLE Proxy
-    ble_proxy_enabled: bool = False
-    ble_proxy_default_timeout: int = 5
-    ble_proxy_adapter: str | None = None
+    # ESPHome Bluetooth Proxy
+    esphome_proxy_mode: bool = False
+    esphome_discovery_timeout: int = 10
+    esphome_connection_timeout: int = 30
+    esphome_scan_duration: int = 10
+    # Manual proxy configuration (for Docker where mDNS doesn't work)
+    esphome_proxy_host: str | None = None
+    esphome_proxy_port: int = 6053
+    esphome_proxy_name: str | None = None
 
     # Public mode (hide proxy UI and advanced options by default)
     public_mode: bool = False

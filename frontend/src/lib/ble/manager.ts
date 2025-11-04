@@ -70,6 +70,7 @@ async function fetchWithRetry(
 export function resolveConnectionMode(selected: ConnectionMode): ResolvedMode {
   if (selected === 'web-bluetooth') return 'direct';
   if (selected === 'proxy') return 'proxy';
+  if (selected === 'esphome-proxy') return 'direct'; // ESPHome provides UUID discovery, connection is still direct
   // Auto
   if (isWebBluetoothAvailable()) return 'direct';
   if (BLEProxyClient.isAvailable()) return 'proxy';

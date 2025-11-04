@@ -40,10 +40,7 @@ async def app_config() -> dict[str, object]:
 
     return {
         "version": settings.version,
-        "ble_proxy_enabled": settings.ble_proxy_enabled,
-        "ble_proxy_default_timeout": settings.ble_proxy_default_timeout,
-        # WS path is fixed by router when enabled; still exposed for convenience
-        "ble_proxy_ws_path": f"{settings.api_v1_prefix}/ble/ws",
+        "esphome_proxy_mode": settings.esphome_proxy_mode,
         "public_mode": settings.public_mode,
         "default_profile": default_profile,
     }

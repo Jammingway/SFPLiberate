@@ -6,6 +6,113 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SFPLiberate is a Web Bluetooth companion app for the Ubiquiti SFP Wizard (UACC-SFP-Wizard) that captures SFP/SFP+ module EEPROM data over BLE, stores it in a local library, and aims to enable cloning/reprogramming modules. The architecture is a **Next.js 16 frontend** (shadcn/ui) + **Dockerized Python FastAPI backend** with SQLite storage. In standalone mode, the Next.js server proxies `/api/*` to the backend.
 
+### Project Goals & Scope
+
+**Core Problem:** The SFP Wizard hardware device:
+- Only communicates via BLE (no local storage, no network connectivity)
+- Can only store ONE module profile for writing at a time
+- Requires users to purchase an OEM module to read before writing
+
+**Solution:** SFPLiberate enables users to:
+1. **Store unlimited module profiles** locally or in the cloud
+2. **"Replay" EEPROM data** to blank modules without needing the original
+3. **Share modules via community database** so anyone can write a Cisco/Intel/etc. SFP without buying one first
+
+**Target Users:** Niche community of networking enthusiasts + home automation hobbyists (overlap with Home Assistant users)
+
+### Project Status (Pre-Alpha)
+
+- **Current State:** Single-user development/testing (no external users yet)
+- **Development Philosophy:**
+  - **Stage 1:** Make it work (rapid iteration, no polish)
+  - **Stage 2:** Make it right (refactor and polish after validation)
+- **Alpha/Beta Timeline:** External users invited only after core functionality works in all deployment modes
+
+### Three Deployment Modes (All Permanent)
+
+#### 1. Standalone Docker (Full Local)
+- **Purpose:** Complete offline capability for self-hosters
+- **Features:** Local SQLite database, optional sync with community database
+- **Target:** Users who want full control, no cloud dependency
+- **Access:** `docker-compose up` → http://localhost:8080
+
+#### 2. Appwrite Cloud (Public Instance)
+- **Purpose:** Browser-only access to app functionality + community database hosting
+- **Features:** Hosted backend, authentication, community module repository
+- **Target:** Users who don't want to self-host
+- **Deployment:** GitHub Actions workflow → Appwrite Cloud (single public instance)
+- **Code Split:** Appwrite-specific code is NOT included in standalone builds
+
+#### 3. Standalone BLE Proxy (Lightweight Bridge)
+- **Purpose:** BLE bridge for users with incompatible browsers (Safari, iOS)
+- **Features:** Proxy ONLY - no backend, no database, just BLE communication
+- **Target:** Users who want app functionality but can't use Web Bluetooth directly
+- **Scope:** Discovery → Connection → UUID extraction → hands off to main app
+
+**Important:** ESPHome proxy has replaced the old Bleak-based proxy. It leverages existing ESPHome Bluetooth proxies that Home Assistant users already have running on their networks.
+
+### ESPHome Proxy Architecture (✅ Implemented)
+
+**Feature Flag:** `ESPHOME_PROXY_MODE=true` (backend environment variable)
+
+**Status:** Fully implemented and tested with 10+ ESPHome proxies on production network.
+
+**Implementation Details:**
+
+Backend Components (`backend/app/services/esphome/`):
+- `proxy_manager.py`: mDNS discovery and ESPHome Native API client lifecycle
+- `device_manager.py`: Device tracking with RSSI per proxy, best proxy selection
+- `proxy_service.py`: Singleton coordinator with advertisement deduplication
+- `schemas.py`: Pydantic models for ESPHome entities
+
+Frontend Components (`frontend/src/`):
+- `lib/esphome/esphomeClient.ts`: API client with SSE subscription
+- `lib/esphome/esphomeTypes.ts`: TypeScript interfaces and helpers
+- `components/esphome/ESPHomeDiscovery.tsx`: Discovery UI with auto-discovery and manual MAC entry
+- `components/ble/ConnectionModeSelector.tsx`: Updated to show ESPHome option when enabled
+
+**API Endpoints:**
+- `GET /api/v1/esphome/status` - Service status and proxy/device counts
+- `GET /api/v1/esphome/devices` - SSE stream of discovered devices
+- `POST /api/v1/esphome/connect` - Connect to device and retrieve UUIDs
+
+**Docker Configuration:**
+- **Requires host networking** for both backend and frontend (mDNS + LAN access)
+- Backend listens on port 80, frontend on port 3000
+- Manual proxy configuration available for environments without mDNS
+
+**ESPHome Proxy Flow:**
+1. Backend discovers ESPHome proxies via mDNS (automatic, continuous)
+2. Backend subscribes to BLE advertisements from all proxies
+3. Frontend connects to SSE stream → shows list of discovered SFP devices with signal strength
+4. User selects device (or enters MAC manually) → Frontend POSTs MAC address to backend
+5. Backend selects best proxy (highest RSSI), connects to device via ESPHome Native API
+6. Backend enumerates GATT services/characteristics → extracts service UUID, notify UUID, write UUID
+7. Backend disconnects from device, returns UUIDs to frontend
+8. Frontend stores UUIDs in profile cache (localStorage)
+9. Future connections use cached UUIDs with direct Web Bluetooth (no re-discovery needed)
+
+**Key Design Decisions:**
+- **No authentication** for ESPHome proxies (assumes local trusted network)
+- **Fail fast** with 30s connection timeout (don't spam network)
+- **Multi-proxy support** with RSSI-based selection per device
+- **ESPHome is for UUID discovery only** - not used for ongoing device communication
+- **10-second auto-discovery timeout** before showing manual MAC entry
+- **2-second advertisement deduplication** to reduce noise
+
+**Documentation:** See `docs/ESPHOME_INTEGRATION.md` for complete guide.
+
+### Ideal User Flow
+
+1. User opens app in browser (Chrome/Edge preferred, Safari via proxy)
+2. SFP Wizard device is auto-discovered via Web Bluetooth (or ESPHome proxy)
+3. User confirms connection to device
+4. User inserts SFP module into Wizard → EEPROM data displayed in app
+5. User can:
+   - **Save** module to local library (for later writing)
+   - **Upload** module to community database (for others to use)
+   - **Download** module from community database and write to blank SFP
+
 ## Commands
 
 ### Running the Application

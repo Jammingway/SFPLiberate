@@ -23,6 +23,7 @@ RUN \
 FROM base AS builder
 WORKDIR /app
 ENV NODE_ENV=production
+ENV DEPLOYMENT_MODE=standalone
 # Copy node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 

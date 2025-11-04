@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir poetry==1.7.1
 COPY pyproject.toml poetry.lock* ./
 
 # Export requirements (for faster subsequent builds)
-RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
+# Include ESPHome proxy extras
+RUN poetry export -f requirements.txt --output requirements.txt --without-hashes --extras esphome-proxy
 
 # Production stage
 FROM python:3.11-slim

@@ -29,9 +29,28 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("database_initialized")
 
+    # Start ESPHome proxy service if enabled
+    if settings.esphome_proxy_mode:
+        try:
+            from app.services.esphome import ESPHomeProxyService
+            service = ESPHomeProxyService()
+            await service.start()
+            logger.info("esphome_proxy_service_started")
+        except Exception as e:
+            logger.error("esphome_proxy_service_startup_failed", error=str(e))
+
     yield
 
     # Shutdown
+    if settings.esphome_proxy_mode:
+        try:
+            from app.services.esphome import ESPHomeProxyService
+            service = ESPHomeProxyService()
+            await service.stop()
+            logger.info("esphome_proxy_service_stopped")
+        except Exception as e:
+            logger.error("esphome_proxy_service_shutdown_failed", error=str(e))
+
     logger.info("application_shutdown")
 
 

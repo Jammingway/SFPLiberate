@@ -7,6 +7,7 @@ import { getBleState, subscribe } from '@/lib/ble/store';
 import { ProxyDiscovery } from '@/components/ble/ProxyDiscovery';
 import { ConnectionStatus } from '@/components/ble/ConnectionStatus';
 import { DirectDiscovery } from '@/components/ble/DirectDiscovery';
+import { ESPHomeDiscovery } from '@/components/esphome/ESPHomeDiscovery';
 import { loadActiveProfile, saveActiveProfile } from '@/lib/ble/profile';
 import { Button } from '@/registry/new-york-v4/ui/button';
 import { Input } from '@/registry/new-york-v4/ui/input';
@@ -26,6 +27,7 @@ export function ConnectPanel() {
   const [ntf, setNtf] = useState('');
   const [proxyAddr, setProxyAddr] = useState('');
   const [support, setSupport] = useState<{ summary: string; reasons: string[] } | null>(null);
+  const [esphomeEnabled, setEsphomeEnabled] = useState(false);
 
   useEffect(() => {
     // Load module list initially (non-blocking)
@@ -47,6 +49,11 @@ export function ConnectPanel() {
       setWrt(p.writeCharUuid);
       setNtf(p.notifyCharUuid);
     }
+    // Check ESPHome availability
+    fetch('/api/v1/esphome/status')
+      .then((res) => res.json())
+      .then((data) => setEsphomeEnabled(data.enabled))
+      .catch(() => setEsphomeEnabled(false));
   }, []);
 
   const onConnect = async () => {
@@ -207,14 +214,24 @@ export function ConnectPanel() {
           </ul>
         </div>
       </div>
-      <div>
-        <strong>Direct Discovery</strong>
-        <DirectDiscovery />
-      </div>
-      <div>
-        <strong>Proxy Discovery</strong>
-        <ProxyDiscovery />
-      </div>
+      {(mode === 'web-bluetooth' || mode === 'auto') && (
+        <div>
+          <strong>Direct Discovery</strong>
+          <DirectDiscovery />
+        </div>
+      )}
+      {mode === 'esphome-proxy' && esphomeEnabled && (
+        <div>
+          <strong>ESPHome Proxy Discovery</strong>
+          <ESPHomeDiscovery />
+        </div>
+      )}
+      {mode === 'proxy' && (
+        <div>
+          <strong>Proxy Discovery (Legacy)</strong>
+          <ProxyDiscovery />
+        </div>
+      )}
       <div>
         <strong>Profile</strong>
         <div className="mt-2 grid gap-3 sm:grid-cols-3" style={{ maxWidth: 880 }}>

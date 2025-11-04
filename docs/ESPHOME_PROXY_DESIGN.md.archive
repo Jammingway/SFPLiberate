@@ -1,0 +1,1237 @@
+# ESPHome Bluetooth Proxy Design Specification
+
+**Status:** RFC (Request for Comments)
+**Version:** 1.0.0
+**Date:** 2025-01-03
+**Author:** System Design
+
+---
+
+## Table of Contents
+
+1. [Problem Statement](#problem-statement)
+2. [Goals & Non-Goals](#goals--non-goals)
+3. [Naming Conventions](#naming-conventions)
+4. [Architecture Overview](#architecture-overview)
+5. [Data Structures & Schemas](#data-structures--schemas)
+6. [Backend Implementation](#backend-implementation)
+7. [Frontend Implementation](#frontend-implementation)
+8. [API Specification](#api-specification)
+9. [Configuration](#configuration)
+10. [Implementation Phases](#implementation-phases)
+11. [Testing Strategy](#testing-strategy)
+12. [Migration Path](#migration-path)
+13. [Security Considerations](#security-considerations)
+14. [Open Questions](#open-questions)
+
+---
+
+## Problem Statement
+
+### Current State
+
+The existing BLE proxy (`ble-proxy-service/`) uses Bleak for direct Bluetooth hardware access:
+
+- **Linux-dependent:** Bleak works best on Linux; Windows/macOS support is limited
+- **Docker limitations:** Requires host network mode, USB device mapping, D-Bus sockets
+- **Single point of failure:** One proxy, one connection
+- **Complex setup:** Users must configure hardware passthrough
+
+### User Pain Points
+
+1. **Self-hosted Docker users** cannot easily access Bluetooth from containerized environments
+2. **iOS/Safari users** lack Web Bluetooth API support
+3. **Home Assistant users** already run ESPHome Bluetooth proxies but can't leverage them
+4. **Cross-platform support** is fragile due to Bleak's OS-specific requirements
+
+### Proposed Solution
+
+Replace the direct hardware access model with **ESPHome Bluetooth Proxy integration**:
+
+- **Zero-config discovery:** Automatically find ESPHome proxies via mDNS
+- **Multi-proxy support:** Use multiple proxies for better coverage and redundancy
+- **RSSI-based selection:** Connect via the closest proxy for best signal
+- **Platform agnostic:** No direct hardware access needed
+- **Browser-direct remains primary:** This is a fallback for environments where Web Bluetooth isn't available
+
+---
+
+## Goals & Non-Goals
+
+### Goals
+
+✅ **Automatic Discovery:** Find ESPHome proxies on the LAN without user configuration
+✅ **SFP Device Discovery:** Scan for BLE devices whose name contains "SFP"
+✅ **Manual Fallback:** Allow users to manually enter BLE MAC addresses
+✅ **GATT Connection:** Connect to devices via the best proxy and retrieve UUIDs
+✅ **Feature Flag:** Gate entire feature behind `ESPHOME_PROXY_MODE=true`
+✅ **Documentation:** Clear setup guide (requires `network_mode: host`)
+✅ **Zero HA Dependency:** Work without Home Assistant (just ESPHome devices)
+
+### Non-Goals
+
+❌ **Replace Web Bluetooth:** Browser-direct remains the preferred path
+❌ **Active Connection Management:** Proxies handle connection; we just query UUIDs
+❌ **Real-time Data Streaming:** This is for discovery/setup, not ongoing communication
+❌ **ESPHome Configuration:** Users must configure their own ESPHome devices
+❌ **Multi-device Support:** Focus on one SFP device at a time
+
+---
+
+## Naming Conventions
+
+### Configuration Variables
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ESPHOME_PROXY_MODE` | boolean | Enable ESPHome proxy discovery feature |
+| `ESPHOME_DISCOVERY_TIMEOUT` | integer | mDNS discovery timeout in seconds (default: 10) |
+| `ESPHOME_CONNECTION_TIMEOUT` | integer | Proxy connection timeout in seconds (default: 30) |
+| `ESPHOME_SCAN_DURATION` | integer | BLE scan duration in seconds (default: 10) |
+| `ESPHOME_RSSI_THRESHOLD` | integer | Minimum RSSI for device selection (default: -80) |
+
+### Backend Naming (Python - snake_case)
+
+**Module:** `backend/app/services/esphome_proxy_service.py`
+
+**Classes:**
+- `ESPHomeProxyService` (singleton service)
+- `ProxyManager` (manages proxy connections)
+- `DeviceManager` (manages discovered devices)
+- `AdvertisementHandler` (processes BLE advertisements)
+
+**Key Methods:**
+- `discover_proxies()` - mDNS discovery
+- `connect_proxy(proxy_name)` - Connect to specific proxy
+- `disconnect_proxy(proxy_name)` - Disconnect from proxy
+- `scan_for_devices()` - Start BLE scanning
+- `get_device_uuids(mac_address)` - GATT connection to retrieve UUIDs
+- `select_best_proxy(mac_address)` - Choose proxy with best RSSI
+
+**Data Structures:**
+- `esphome_proxies: Dict[str, ProxyConnection]` - Active proxy connections
+- `discovered_devices: Dict[str, DiscoveredDevice]` - SFP devices found
+- `advertisement_cache: Dict[Tuple[str, int], float]` - Deduplication cache
+
+### Frontend Naming (TypeScript - camelCase)
+
+**Module:** `frontend/src/lib/esphome/`
+
+**Files:**
+- `esphomeClient.ts` - API client for ESPHome endpoints
+- `esphomeTypes.ts` - TypeScript types
+- `esphomeStore.ts` - Zustand state management
+
+**Components:**
+- `ESPHomeDiscovery.tsx` - Discovery UI component
+- `ESPHomeDeviceList.tsx` - Device list with signal strength
+- `ESPHomeManualInput.tsx` - Manual MAC address entry
+
+**Types:**
+- `ESPHomeProxy` - Proxy information
+- `DiscoveredDevice` - BLE device with metadata
+- `DeviceConnection` - Connection state
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/esphome/status` | Check if ESPHome mode is enabled |
+| GET | `/api/esphome/proxies` | List discovered proxies |
+| GET | `/api/esphome/devices` | SSE stream of discovered devices |
+| POST | `/api/esphome/connect` | Connect to device and retrieve UUIDs |
+| POST | `/api/esphome/scan` | Trigger manual scan |
+
+---
+
+## Architecture Overview
+
+### System Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Frontend (Next.js)                        │
+│  ┌────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │  Browser BLE   │  │ ESPHome Client  │  │  Device List    │  │
+│  │  (Primary)     │  │  (Fallback)     │  │     UI          │  │
+│  └────────┬───────┘  └────────┬────────┘  └────────┬────────┘  │
+│           │                   │                     │           │
+└───────────┼───────────────────┼─────────────────────┼───────────┘
+            │                   │                     │
+            │                   │ SSE /api/esphome/devices
+            │                   │ POST /api/esphome/connect
+            │                   ▼
+┌───────────┼───────────────────────────────────────────────────┐
+│           │            Backend (FastAPI)                       │
+│           │                                                    │
+│  ┌────────▼──────────────────────────────────────────────┐    │
+│  │         ESPHomeProxyService (Singleton)               │    │
+│  │  ┌──────────────┐  ┌────────────────┐  ┌──────────┐ │    │
+│  │  │ProxyManager  │  │DeviceManager   │  │AdHandler │ │    │
+│  │  │              │  │                │  │          │ │    │
+│  │  │- Discover    │  │- Filter SFPs   │  │- Dedup   │ │    │
+│  │  │- Connect     │  │- Track RSSI    │  │- Cache   │ │    │
+│  │  │- Subscribe   │  │- Best Proxy    │  │          │ │    │
+│  │  └──────────────┘  └────────────────┘  └──────────┘ │    │
+│  └──────────────────────────┬─────────────────────────┘    │
+│                             │                               │
+│                ┌────────────┴────────────┐                  │
+│                │   aioesphomeapi         │                  │
+│                │   zeroconf              │                  │
+│                └────────────┬────────────┘                  │
+└─────────────────────────────┼───────────────────────────────┘
+                              │
+                              │ mDNS _esphomelib._tcp.local
+                              │ ESPHome Native API (port 6053)
+                              ▼
+        ┌─────────────────────────────────────────────┐
+        │            Local Network (mDNS)              │
+        │                                              │
+        │  ┌───────────┐  ┌───────────┐  ┌──────────┐│
+        │  │ ESPHome   │  │ ESPHome   │  │ ESPHome  ││
+        │  │ Proxy 1   │  │ Proxy 2   │  │ Proxy 3  ││
+        │  │ (ESP32)   │  │ (ESP32)   │  │ (ESP32)  ││
+        │  └─────┬─────┘  └─────┬─────┘  └────┬─────┘│
+        │        │ BLE           │ BLE         │ BLE  │
+        └────────┼───────────────┼─────────────┼──────┘
+                 │               │             │
+                 ▼               ▼             ▼
+              [SFP Devices in range of different proxies]
+```
+
+### Data Flow
+
+#### Discovery Flow
+
+```
+1. Backend starts → ESPHomeProxyService initializes (if ESPHOME_PROXY_MODE=true)
+2. ProxyManager starts mDNS browser (_esphomelib._tcp.local)
+3. For each discovered proxy:
+   a. Create APIClient instance
+   b. Connect and authenticate (password="")
+   c. Subscribe to BLE advertisements
+   d. Add to active_proxies dict
+4. Advertisement packets arrive → AdvertisementHandler
+   a. Deduplicate (cache key: mac + timestamp window)
+   b. Check if name contains "SFP" (case-insensitive)
+   c. Update DeviceManager.discovered_devices
+   d. Track best RSSI per device per proxy
+5. Frontend connects to SSE → receives device list updates in real-time
+```
+
+#### Connection Flow
+
+```
+1. User selects device (or enters MAC manually)
+2. Frontend POSTs to /api/esphome/connect with { mac_address: "..." }
+3. Backend:
+   a. DeviceManager.select_best_proxy(mac_address)
+   b. Selected proxy's APIClient.bluetooth_device_connect(mac)
+   c. APIClient.bluetooth_gatt_get_services(mac)
+   d. Parse services/characteristics → extract UUIDs
+   e. APIClient.bluetooth_device_disconnect(mac)
+4. Return UUIDs to frontend as JSON:
+   {
+     "service_uuid": "...",
+     "notify_char_uuid": "...",
+     "write_char_uuid": "..."
+   }
+5. Frontend stores UUIDs in profile, proceeds to normal connection flow
+```
+
+---
+
+## Data Structures & Schemas
+
+### Backend Schemas (Pydantic)
+
+```python
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict
+from datetime import datetime
+
+class ESPHomeProxy(BaseModel):
+    """Represents a discovered ESPHome proxy."""
+    name: str = Field(..., description="Proxy hostname (e.g., 'living-room-proxy')")
+    address: str = Field(..., description="IP address")
+    port: int = Field(default=6053, description="ESPHome API port")
+    mac_address: Optional[str] = Field(None, description="Proxy MAC address")
+    connected: bool = Field(default=False, description="Connection status")
+    last_seen: datetime = Field(default_factory=datetime.utcnow)
+
+class DiscoveredDevice(BaseModel):
+    """Represents a discovered BLE device."""
+    mac_address: str = Field(..., description="BLE MAC address")
+    name: str = Field(..., description="Device name from advertisement")
+    rssi: int = Field(..., description="Signal strength (dBm)")
+    best_proxy: str = Field(..., description="Proxy name with best RSSI")
+    last_seen: datetime = Field(default_factory=datetime.utcnow)
+    advertisement_data: Optional[Dict] = Field(None, description="Raw ad data")
+
+class DeviceConnectionRequest(BaseModel):
+    """Request to connect to a device."""
+    mac_address: str = Field(..., description="BLE MAC address (format: AA:BB:CC:DD:EE:FF)")
+
+class DeviceConnectionResponse(BaseModel):
+    """Response with discovered UUIDs."""
+    service_uuid: str
+    notify_char_uuid: str
+    write_char_uuid: str
+    device_name: Optional[str] = None
+    proxy_used: str
+
+class ESPHomeStatus(BaseModel):
+    """Status of ESPHome proxy feature."""
+    enabled: bool
+    proxies_discovered: int
+    devices_discovered: int
+    mode: str = Field(default="esphome", description="Connection mode")
+```
+
+### Frontend Types (TypeScript)
+
+```typescript
+export interface ESPHomeProxy {
+  name: string;
+  address: string;
+  port: number;
+  macAddress?: string;
+  connected: boolean;
+  lastSeen: string; // ISO 8601
+}
+
+export interface DiscoveredDevice {
+  macAddress: string;
+  name: string;
+  rssi: number;
+  bestProxy: string;
+  lastSeen: string;
+  signalStrength: 'excellent' | 'good' | 'fair' | 'poor'; // computed from RSSI
+}
+
+export interface DeviceConnectionRequest {
+  macAddress: string;
+}
+
+export interface DeviceConnectionResponse {
+  serviceUuid: string;
+  notifyCharUuid: string;
+  writeCharUuid: string;
+  deviceName?: string;
+  proxyUsed: string;
+}
+
+export interface ESPHomeStatus {
+  enabled: boolean;
+  proxiesDiscovered: number;
+  devicesDiscovered: number;
+  mode: 'esphome';
+}
+```
+
+---
+
+## Backend Implementation
+
+### Directory Structure
+
+```
+backend/
+├── app/
+│   ├── services/
+│   │   ├── esphome/
+│   │   │   ├── __init__.py
+│   │   │   ├── proxy_service.py      # Main service singleton
+│   │   │   ├── proxy_manager.py      # mDNS discovery & connection
+│   │   │   ├── device_manager.py     # Device tracking & RSSI
+│   │   │   ├── advertisement_handler.py  # Ad processing & dedup
+│   │   │   └── schemas.py            # Pydantic models
+│   ├── api/
+│   │   └── v1/
+│   │       └── esphome.py            # FastAPI routes
+│   └── core/
+│       └── config.py                 # Add ESPHome config
+```
+
+### Core Components
+
+#### 1. ESPHomeProxyService (Singleton)
+
+```python
+# backend/app/services/esphome/proxy_service.py
+
+import asyncio
+from typing import Optional
+from .proxy_manager import ProxyManager
+from .device_manager import DeviceManager
+from .advertisement_handler import AdvertisementHandler
+
+class ESPHomeProxyService:
+    """
+    Singleton service for ESPHome Bluetooth proxy integration.
+
+    Coordinates mDNS discovery, proxy connections, and device tracking.
+    """
+
+    _instance: Optional['ESPHomeProxyService'] = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        if hasattr(self, '_initialized'):
+            return
+
+        self._initialized = True
+        self.proxy_manager = ProxyManager()
+        self.device_manager = DeviceManager()
+        self.ad_handler = AdvertisementHandler(self.device_manager)
+        self._discovery_task: Optional[asyncio.Task] = None
+
+    async def start(self):
+        """Start the service (discovery and monitoring)."""
+        if self._discovery_task:
+            return  # Already running
+
+        self._discovery_task = asyncio.create_task(self._run_discovery())
+
+    async def stop(self):
+        """Stop the service and cleanup."""
+        if self._discovery_task:
+            self._discovery_task.cancel()
+            try:
+                await self._discovery_task
+            except asyncio.CancelledError:
+                pass
+
+        await self.proxy_manager.disconnect_all()
+
+    async def _run_discovery(self):
+        """Main discovery loop."""
+        while True:
+            try:
+                # Discover proxies via mDNS
+                await self.proxy_manager.discover_proxies()
+
+                # Connect to all discovered proxies
+                await self.proxy_manager.connect_all(
+                    advertisement_callback=self.ad_handler.handle_advertisement
+                )
+
+                # Wait before next discovery cycle
+                await asyncio.sleep(30)
+
+            except Exception as e:
+                logger.error(f"Error in discovery loop: {e}", exc_info=True)
+                await asyncio.sleep(10)
+
+    def get_discovered_devices(self) -> List[DiscoveredDevice]:
+        """Get current list of discovered SFP devices."""
+        return self.device_manager.get_devices()
+
+    async def connect_to_device(self, mac_address: str) -> DeviceConnectionResponse:
+        """
+        Connect to a device via the best proxy and retrieve UUIDs.
+
+        Args:
+            mac_address: BLE MAC address
+
+        Returns:
+            DeviceConnectionResponse with service/characteristic UUIDs
+        """
+        # Select best proxy
+        proxy_name = self.device_manager.select_best_proxy(mac_address)
+        if not proxy_name:
+            raise ValueError(f"No proxy has seen device {mac_address}")
+
+        # Get proxy client
+        client = self.proxy_manager.get_client(proxy_name)
+        if not client:
+            raise RuntimeError(f"Proxy {proxy_name} not connected")
+
+        # Connect to device
+        await client.bluetooth_device_connect(mac_address)
+
+        try:
+            # Get GATT services
+            services = await client.bluetooth_gatt_get_services(mac_address)
+
+            # Parse for notify/write characteristics
+            service_uuid, notify_uuid, write_uuid = self._parse_gatt_services(services)
+
+            return DeviceConnectionResponse(
+                service_uuid=service_uuid,
+                notify_char_uuid=notify_uuid,
+                write_char_uuid=write_uuid,
+                proxy_used=proxy_name
+            )
+        finally:
+            # Always disconnect
+            await client.bluetooth_device_disconnect(mac_address)
+
+    def _parse_gatt_services(self, services):
+        """
+        Parse GATT services to find notify/write characteristics.
+
+        Returns: (service_uuid, notify_char_uuid, write_char_uuid)
+        """
+        for service in services:
+            notify_char = None
+            write_char = None
+
+            for char in service.characteristics:
+                if char.properties.notify:
+                    notify_char = char.uuid
+                if char.properties.write or char.properties.write_without_response:
+                    write_char = char.uuid
+
+            if notify_char and write_char:
+                return (service.uuid, notify_char, write_char)
+
+        raise ValueError("No suitable service with notify + write found")
+```
+
+#### 2. ProxyManager (mDNS Discovery)
+
+```python
+# backend/app/services/esphome/proxy_manager.py
+
+from zeroconf import ServiceBrowser, ServiceStateChange, Zeroconf
+from aioesphomeapi import APIClient
+from typing import Dict, Optional, Callable
+import asyncio
+
+class ProxyManager:
+    """Manages ESPHome proxy discovery and connections."""
+
+    def __init__(self):
+        self.proxies: Dict[str, ESPHomeProxy] = {}
+        self.clients: Dict[str, APIClient] = {}
+        self.zeroconf: Optional[Zeroconf] = None
+        self._browser: Optional[ServiceBrowser] = None
+
+    async def discover_proxies(self):
+        """Start mDNS discovery for ESPHome devices."""
+        if self.zeroconf:
+            return  # Already discovering
+
+        self.zeroconf = Zeroconf()
+        self._browser = ServiceBrowser(
+            self.zeroconf,
+            "_esphomelib._tcp.local.",
+            handlers=[self._on_service_state_change]
+        )
+
+    def _on_service_state_change(self, zeroconf, service_type, name, state_change):
+        """Handle mDNS service discovery events."""
+        if state_change is ServiceStateChange.Added:
+            info = zeroconf.get_service_info(service_type, name)
+            if info:
+                proxy = ESPHomeProxy(
+                    name=name.replace(f".{service_type}", ""),
+                    address=str(info.addresses[0]) if info.addresses else "",
+                    port=info.port,
+                    connected=False
+                )
+                self.proxies[proxy.name] = proxy
+                logger.info(f"Discovered ESPHome proxy: {proxy.name} @ {proxy.address}")
+
+        elif state_change is ServiceStateChange.Removed:
+            proxy_name = name.replace(f".{service_type}", "")
+            if proxy_name in self.proxies:
+                del self.proxies[proxy_name]
+                logger.info(f"ESPHome proxy removed: {proxy_name}")
+
+    async def connect_all(self, advertisement_callback: Callable):
+        """Connect to all discovered proxies."""
+        for name, proxy in self.proxies.items():
+            if name not in self.clients:
+                await self.connect_proxy(name, proxy, advertisement_callback)
+
+    async def connect_proxy(self, name: str, proxy: ESPHomeProxy, ad_callback: Callable):
+        """Connect to a specific proxy and subscribe to BLE ads."""
+        try:
+            client = APIClient(proxy.address, proxy.port, "")
+            await client.connect(login=True)
+
+            # Subscribe to BLE advertisements
+            def on_bluetooth_le_advertisement(advertisement):
+                ad_callback(advertisement, proxy_name=name)
+
+            await client.subscribe_bluetooth_le_advertisements(on_bluetooth_le_advertisement)
+
+            self.clients[name] = client
+            proxy.connected = True
+            logger.info(f"Connected to proxy: {name}")
+
+        except Exception as e:
+            logger.error(f"Failed to connect to proxy {name}: {e}")
+
+    async def disconnect_all(self):
+        """Disconnect from all proxies."""
+        for client in self.clients.values():
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+        self.clients.clear()
+
+        if self._browser:
+            self._browser.cancel()
+        if self.zeroconf:
+            self.zeroconf.close()
+
+    def get_client(self, proxy_name: str) -> Optional[APIClient]:
+        """Get API client for a specific proxy."""
+        return self.clients.get(proxy_name)
+```
+
+#### 3. DeviceManager (Device Tracking)
+
+```python
+# backend/app/services/esphome/device_manager.py
+
+from typing import Dict, Optional
+from datetime import datetime, timedelta
+from .schemas import DiscoveredDevice
+
+class DeviceManager:
+    """Manages discovered BLE devices and tracks RSSI per proxy."""
+
+    def __init__(self):
+        self.devices: Dict[str, DiscoveredDevice] = {}
+        self.rssi_by_proxy: Dict[str, Dict[str, int]] = {}  # {mac: {proxy: rssi}}
+
+    def update_device(self, mac: str, name: str, rssi: int, proxy_name: str):
+        """Update or add a discovered device."""
+        # Update RSSI tracking
+        if mac not in self.rssi_by_proxy:
+            self.rssi_by_proxy[mac] = {}
+        self.rssi_by_proxy[mac][proxy_name] = rssi
+
+        # Find best proxy
+        best_proxy = max(self.rssi_by_proxy[mac].items(), key=lambda x: x[1])
+
+        # Update device
+        self.devices[mac] = DiscoveredDevice(
+            mac_address=mac,
+            name=name,
+            rssi=best_proxy[1],
+            best_proxy=best_proxy[0],
+            last_seen=datetime.utcnow()
+        )
+
+    def get_devices(self) -> List[DiscoveredDevice]:
+        """Get all discovered devices (with recent activity)."""
+        cutoff = datetime.utcnow() - timedelta(seconds=30)
+        return [
+            device for device in self.devices.values()
+            if device.last_seen > cutoff
+        ]
+
+    def select_best_proxy(self, mac: str) -> Optional[str]:
+        """Select the proxy with the best RSSI for a device."""
+        if mac not in self.rssi_by_proxy:
+            return None
+
+        return max(self.rssi_by_proxy[mac].items(), key=lambda x: x[1])[0]
+```
+
+#### 4. AdvertisementHandler (Deduplication)
+
+```python
+# backend/app/services/esphome/advertisement_handler.py
+
+from typing import Dict, Tuple
+import time
+
+class AdvertisementHandler:
+    """Processes BLE advertisements with deduplication."""
+
+    def __init__(self, device_manager: DeviceManager):
+        self.device_manager = device_manager
+        self.cache: Dict[Tuple[str, int], float] = {}  # {(mac, rssi): timestamp}
+        self.CACHE_WINDOW = 2.0  # seconds
+
+    def handle_advertisement(self, ad, proxy_name: str):
+        """Process a BLE advertisement packet."""
+        mac = ad.address
+        name = ad.name or ""
+        rssi = ad.rssi
+
+        # Deduplicate
+        cache_key = (mac, rssi)
+        now = time.time()
+
+        if cache_key in self.cache:
+            if now - self.cache[cache_key] < self.CACHE_WINDOW:
+                return  # Duplicate, ignore
+
+        self.cache[cache_key] = now
+
+        # Filter for SFP devices
+        if "sfp" not in name.lower():
+            return
+
+        # Update device manager
+        self.device_manager.update_device(mac, name, rssi, proxy_name)
+```
+
+### API Routes
+
+```python
+# backend/app/api/v1/esphome.py
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
+from app.services.esphome.proxy_service import ESPHomeProxyService
+from app.services.esphome.schemas import *
+import json
+import asyncio
+
+router = APIRouter(prefix="/api/esphome", tags=["ESPHome Proxy"])
+
+def get_service() -> ESPHomeProxyService:
+    """Dependency to get service instance."""
+    return ESPHomeProxyService()
+
+@router.get("/status", response_model=ESPHomeStatus)
+async def get_status(service: ESPHomeProxyService = Depends(get_service)):
+    """Check if ESPHome proxy mode is enabled."""
+    devices = service.get_discovered_devices()
+    return ESPHomeStatus(
+        enabled=True,
+        proxies_discovered=len(service.proxy_manager.proxies),
+        devices_discovered=len(devices)
+    )
+
+@router.get("/proxies", response_model=List[ESPHomeProxy])
+async def list_proxies(service: ESPHomeProxyService = Depends(get_service)):
+    """Get list of discovered ESPHome proxies."""
+    return list(service.proxy_manager.proxies.values())
+
+@router.get("/devices")
+async def discover_devices_stream(service: ESPHomeProxyService = Depends(get_service)):
+    """
+    SSE stream of discovered devices.
+
+    Client should listen for 'message' events with JSON payloads.
+    """
+    async def event_generator():
+        while True:
+            devices = service.get_discovered_devices()
+            data = json.dumps([d.model_dump() for d in devices])
+            yield f"data: {data}\n\n"
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@router.post("/connect", response_model=DeviceConnectionResponse)
+async def connect_device(
+    request: DeviceConnectionRequest,
+    service: ESPHomeProxyService = Depends(get_service)
+):
+    """
+    Connect to a BLE device via ESPHome proxy and retrieve UUIDs.
+
+    This will:
+    1. Select the best proxy (highest RSSI)
+    2. Connect to the device
+    3. Enumerate GATT services/characteristics
+    4. Return notify/write UUIDs
+    5. Disconnect
+    """
+    return await service.connect_to_device(request.mac_address)
+```
+
+---
+
+## Frontend Implementation
+
+### Directory Structure
+
+```
+frontend/src/
+├── lib/
+│   └── esphome/
+│       ├── esphomeClient.ts       # API client
+│       ├── esphomeTypes.ts        # TypeScript interfaces
+│       └── esphomeStore.ts        # Zustand state store
+├── components/
+│   └── esphome/
+│       ├── ESPHomeDiscovery.tsx   # Main discovery UI
+│       ├── ESPHomeDeviceList.tsx  # Device list with RSSI
+│       └── ESPHomeManualInput.tsx # Manual MAC entry
+```
+
+### ESPHome Client
+
+```typescript
+// frontend/src/lib/esphome/esphomeClient.ts
+
+import type {
+  ESPHomeStatus,
+  ESPHomeProxy,
+  DiscoveredDevice,
+  DeviceConnectionRequest,
+  DeviceConnectionResponse,
+} from './esphomeTypes';
+
+export class ESPHomeClient {
+  private baseUrl: string;
+
+  constructor(baseUrl = '/api/esphome') {
+    this.baseUrl = baseUrl;
+  }
+
+  async getStatus(): Promise<ESPHomeStatus> {
+    const res = await fetch(`${this.baseUrl}/status`);
+    if (!res.ok) throw new Error('Failed to get ESPHome status');
+    return res.json();
+  }
+
+  async getProxies(): Promise<ESPHomeProxy[]> {
+    const res = await fetch(`${this.baseUrl}/proxies`);
+    if (!res.ok) throw new Error('Failed to get proxies');
+    return res.json();
+  }
+
+  /**
+   * Subscribe to device discovery stream (SSE).
+   */
+  subscribeToDevices(callback: (devices: DiscoveredDevice[]) => void): () => void {
+    const eventSource = new EventSource(`${this.baseUrl}/devices`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const devices = JSON.parse(event.data) as DiscoveredDevice[];
+        callback(devices);
+      } catch (e) {
+        console.error('Failed to parse SSE message:', e);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('ESPHome SSE error:', err);
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
+  }
+
+  async connectToDevice(macAddress: string): Promise<DeviceConnectionResponse> {
+    const res = await fetch(`${this.baseUrl}/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mac_address: macAddress } as DeviceConnectionRequest),
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Failed to connect: ${error}`);
+    }
+
+    return res.json();
+  }
+}
+```
+
+### Discovery Component
+
+```typescript
+// frontend/src/components/esphome/ESPHomeDiscovery.tsx
+
+import { useEffect, useState } from 'react';
+import { ESPHomeClient } from '@/lib/esphome/esphomeClient';
+import { DiscoveredDevice } from '@/lib/esphome/esphomeTypes';
+import { toast } from 'sonner';
+
+export function ESPHomeDiscovery() {
+  const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
+  const [selectedMac, setSelectedMac] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    const client = new ESPHomeClient();
+
+    // Subscribe to device stream
+    const unsubscribe = client.subscribeToDevices((newDevices) => {
+      setDevices(newDevices);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleConnect = async () => {
+    if (!selectedMac) return;
+
+    setConnecting(true);
+    try {
+      const client = new ESPHomeClient();
+      const result = await client.connectToDevice(selectedMac);
+
+      // Store UUIDs in profile
+      saveActiveProfile({
+        serviceUuid: result.serviceUuid,
+        notifyCharUuid: result.notifyCharUuid,
+        writeCharUuid: result.writeCharUuid,
+      });
+
+      toast.success('Device UUIDs retrieved!');
+      // Proceed to normal connection flow...
+
+    } catch (error: any) {
+      toast.error(`Connection failed: ${error.message}`);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3>Discovered SFP Devices</h3>
+
+      {devices.length === 0 ? (
+        <p className="text-muted-foreground">Scanning for devices...</p>
+      ) : (
+        <div className="space-y-2">
+          {devices.map((device) => (
+            <button
+              key={device.macAddress}
+              onClick={() => setSelectedMac(device.macAddress)}
+              className={`w-full p-3 border rounded ${
+                selectedMac === device.macAddress ? 'border-blue-500' : ''
+              }`}
+            >
+              <div className="flex justify-between">
+                <span className="font-medium">{device.name}</span>
+                <span className="text-sm text-muted-foreground">
+                  {device.rssi} dBm
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {device.macAddress}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={handleConnect}
+        disabled={!selectedMac || connecting}
+        className="w-full py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+      >
+        {connecting ? 'Connecting...' : 'Connect'}
+      </button>
+    </div>
+  );
+}
+```
+
+---
+
+## API Specification
+
+See [API Endpoints](#api-endpoints) table above and detailed route implementations in [Backend Implementation](#backend-implementation).
+
+---
+
+## Configuration
+
+### Environment Variables
+
+Add to `backend/.env.example`:
+
+```bash
+# ESPHome Bluetooth Proxy
+ESPHOME_PROXY_MODE=false
+ESPHOME_DISCOVERY_TIMEOUT=10
+ESPHOME_CONNECTION_TIMEOUT=30
+ESPHOME_SCAN_DURATION=10
+ESPHOME_RSSI_THRESHOLD=-80
+```
+
+### Docker Compose Changes
+
+```yaml
+# docker-compose.yml
+
+services:
+  backend:
+    # ...existing config...
+
+    # IMPORTANT: ESPHome proxy requires host network mode for mDNS
+    network_mode: host  # ONLY when ESPHOME_PROXY_MODE=true
+
+    environment:
+      - ESPHOME_PROXY_MODE=${ESPHOME_PROXY_MODE:-false}
+      - ESPHOME_DISCOVERY_TIMEOUT=${ESPHOME_DISCOVERY_TIMEOUT:-10}
+```
+
+**⚠️ WARNING:** Enabling `network_mode: host` removes network isolation. Document security implications.
+
+---
+
+## Implementation Phases
+
+### Phase 1: Backend Foundation (Week 1)
+
+**Tasks:**
+- [ ] Install dependencies: `aioesphomeapi`, `zeroconf`
+- [ ] Create `backend/app/services/esphome/` module structure
+- [ ] Implement `ProxyManager` with mDNS discovery
+- [ ] Write unit tests for proxy discovery
+- [ ] Add configuration to `backend/app/core/config.py`
+
+**Deliverables:**
+- Working mDNS discovery
+- Tests proving proxies are discovered
+
+### Phase 2: Device Discovery (Week 2)
+
+**Tasks:**
+- [ ] Implement `AdvertisementHandler` with deduplication
+- [ ] Implement `DeviceManager` with RSSI tracking
+- [ ] Integrate with `ProxyManager` (subscribe to ads)
+- [ ] Add filtering logic (name contains "SFP")
+- [ ] Write unit tests
+
+**Deliverables:**
+- Advertisement processing pipeline
+- Device list updates correctly
+
+### Phase 3: GATT Connection (Week 2)
+
+**Tasks:**
+- [ ] Implement `ESPHomeProxyService.connect_to_device()`
+- [ ] Add GATT service/characteristic parsing
+- [ ] Implement proxy selection by RSSI
+- [ ] Add error handling and cleanup
+- [ ] Write integration tests
+
+**Deliverables:**
+- Working GATT connection via proxy
+- UUID retrieval functional
+
+### Phase 4: API Endpoints (Week 3)
+
+**Tasks:**
+- [ ] Create `backend/app/api/v1/esphome.py`
+- [ ] Implement `/api/esphome/status`
+- [ ] Implement `/api/esphome/proxies`
+- [ ] Implement `/api/esphome/devices` (SSE)
+- [ ] Implement `/api/esphome/connect`
+- [ ] Add API tests
+
+**Deliverables:**
+- All API endpoints functional
+- OpenAPI docs generated
+
+### Phase 5: Frontend Integration (Week 3-4)
+
+**Tasks:**
+- [ ] Create `frontend/src/lib/esphome/` module
+- [ ] Implement `ESPHomeClient`
+- [ ] Create `ESPHomeDiscovery.tsx` component
+- [ ] Add manual MAC input component
+- [ ] Integrate with existing BLE connection flow
+- [ ] Add UI tests
+
+**Deliverables:**
+- Working discovery UI
+- End-to-end connection flow
+
+### Phase 6: Documentation & Migration (Week 4)
+
+**Tasks:**
+- [ ] Write setup guide for ESPHome proxies
+- [ ] Document Docker network_mode requirements
+- [ ] Create migration guide from old proxy
+- [ ] Update README and CLAUDE.md
+- [ ] Record demo video
+
+**Deliverables:**
+- Complete documentation
+- Migration path for existing users
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+
+**Backend:**
+- `test_proxy_manager.py`: mDNS discovery, connection lifecycle
+- `test_device_manager.py`: Device tracking, RSSI selection
+- `test_advertisement_handler.py`: Deduplication, filtering
+
+**Frontend:**
+- `esphomeClient.test.ts`: API client methods
+- `ESPHomeDiscovery.test.tsx`: Component rendering, interactions
+
+### Integration Tests
+
+- **E2E Proxy Discovery:** Mock mDNS, verify proxy connection
+- **E2E Device Discovery:** Mock advertisements, verify device list
+- **E2E GATT Connection:** Mock ESPHome API, verify UUID retrieval
+
+### Manual Testing Checklist
+
+- [ ] Verify mDNS discovery finds real ESPHome devices
+- [ ] Verify BLE scan detects actual SFP device
+- [ ] Verify RSSI-based proxy selection works correctly
+- [ ] Verify GATT connection retrieves correct UUIDs
+- [ ] Verify manual MAC entry works
+- [ ] Verify SSE stream updates in real-time
+- [ ] Test with multiple proxies in range
+- [ ] Test with zero proxies (graceful degradation)
+
+---
+
+## Migration Path
+
+### For Users
+
+**From:** Standalone BLE Proxy (Bleak)
+**To:** ESPHome Bluetooth Proxy
+
+**Steps:**
+1. Install ESPHome on ESP32 device(s)
+2. Configure Bluetooth Proxy component (see docs)
+3. Set `ESPHOME_PROXY_MODE=true` in `.env`
+4. Enable `network_mode: host` in `docker-compose.yml`
+5. Restart stack: `docker-compose up --build`
+
+**Rollback:**
+- Set `ESPHOME_PROXY_MODE=false`
+- Revert `network_mode` to `bridge`
+- Restart
+
+### For Codebase
+
+**Phase 1: Co-existence (v1.0)**
+- Old proxy remains in `ble-proxy-service/`
+- New proxy in `backend/app/services/esphome/`
+- Feature flag controls which is active
+
+**Phase 2: Deprecation (v1.1)**
+- Mark `ble-proxy-service/` as deprecated
+- Add deprecation notices in logs/docs
+
+**Phase 3: Removal (v2.0)**
+- Remove `ble-proxy-service/` entirely
+- Remove Bleak dependency
+
+---
+
+## Security Considerations
+
+### mDNS Discovery
+
+**Risk:** Malicious devices advertising as ESPHome proxies
+**Mitigation:**
+- Verify ESPHome API handshake
+- Use authentication (even if default password)
+- Document: Only run on trusted networks
+
+### Device Connections
+
+**Risk:** Connecting to wrong BLE device (MAC spoofing)
+**Mitigation:**
+- Require user confirmation before GATT connection
+- Display device name + MAC in UI
+- Log all connection attempts
+
+### Network Exposure
+
+**Risk:** `network_mode: host` exposes all container ports
+**Mitigation:**
+- Document security implications clearly
+- Recommend firewall rules
+- Consider alternative: bridge + avahi-daemon sidecar
+
+### Data Privacy
+
+**Risk:** BLE MAC addresses are PII
+**Mitigation:**
+- Don't log MAC addresses unnecessarily
+- Don't persist discovered devices to database
+- Clear discovery cache on shutdown
+
+---
+
+## Open Questions
+
+1. **ESPHome Authentication:** Should we support password-protected proxies? (Currently assumes default "")
+2. **Multi-proxy Redundancy:** Should we attempt multiple proxies if best one fails?
+3. **Device Caching:** Should we persist discovered devices across restarts?
+4. **Home Assistant Integration:** Should we also support HA's Bluetooth proxy API?
+5. **Fallback Strategy:** If ESPHome fails, should we auto-fallback to Bleak proxy?
+
+---
+
+## Appendices
+
+### A. ESPHome Proxy Configuration Example
+
+```yaml
+# example-esphome-config.yaml
+
+esphome:
+  name: living-room-proxy
+  platform: ESP32
+  board: esp32dev
+
+wifi:
+  ssid: "YourSSID"
+  password: "YourPassword"
+
+api:
+  password: ""  # Empty for default
+
+bluetooth_proxy:
+  active: true
+```
+
+### B. mDNS Service Records
+
+**Service Type:** `_esphomelib._tcp.local.`
+**Port:** 6053 (default ESPHome API)
+**TXT Records:**
+- `version`: ESPHome version
+- `mac`: Device MAC address
+- `platform`: esp32/esp8266
+
+### C. Alternative: Avahi Sidecar (Bridge Network)
+
+If `network_mode: host` is not acceptable:
+
+```yaml
+services:
+  avahi:
+    image: flungo/avahi
+    network_mode: host
+    volumes:
+      - /var/run/dbus:/var/run/dbus
+
+  backend:
+    # bridge network
+    depends_on:
+      - avahi
+```
+
+---
+
+## References
+
+- [ESPHome Bluetooth Proxy](https://esphome.io/components/bluetooth_proxy.html)
+- [aioesphomeapi Documentation](https://github.com/esphome/aioesphomeapi)
+- [Python Zeroconf](https://python-zeroconf.readthedocs.io/)
+- [mDNS RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762)
+
+---
+
+**End of Design Specification**

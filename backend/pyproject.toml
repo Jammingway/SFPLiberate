@@ -19,9 +19,12 @@ httpx = "^0.28.1"
 bleak = {version = "^1.1.1", optional = true}
 websockets = "^15.0.1"
 dbus-next = {version = "^0.2.3", optional = true}
+aioesphomeapi = {version = "^21.0.0", optional = true}
+zeroconf = {version = "^0.131.0", optional = true}
 
 [tool.poetry.extras]
 ble-proxy = ["bleak", "dbus-next"]
+esphome-proxy = ["aioesphomeapi", "zeroconf"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"

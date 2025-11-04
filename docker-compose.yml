@@ -4,17 +4,6 @@
 
 name: sfpliberate
 
-# Shared BLE proxy config (anchor defined before use)
-x-ble-proxy-config: &ble-proxy-config
-  profiles:
-    - ble-proxy
-  devices:
-    - /dev/bus/usb:/dev/bus/usb
-  cap_add:
-    - NET_ADMIN
-  environment:
-    - BLE_PROXY_ENABLED=true
-
 services:
   backend:
     build:
@@ -49,28 +38,25 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=${ENVIRONMENT:-production}
-      # BLE Proxy (optional)
-      - BLE_PROXY_ENABLED=${BLE_PROXY_ENABLED:-false}
-      - BLE_PROXY_DEFAULT_TIMEOUT=${BLE_PROXY_DEFAULT_TIMEOUT:-5}
-      - BLE_PROXY_ADAPTER=${BLE_PROXY_ADAPTER:-}
+      # ESPHome Proxy (optional)
+      - ESPHOME_PROXY_MODE=${ESPHOME_PROXY_MODE:-false}
 
     # Volumes
     volumes:
       - backend_data:/app/data:rw
       # Bind-mount .env to allow backend to persist profile UUIDs (self-hosted)
       - ./.env:/app/.env:rw
-      # Optional: D-Bus socket for BlueZ (required by bleak on many distros)
-      # Comment these lines if your host does not have these sockets.
-      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
-      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
 
     # Network
-    networks:
-      - sfp-internal
+    # Note: For ESPHome proxy to work, backend needs to reach LAN.
+    # Comment out 'networks' and use 'network_mode: host' when using ESPHome
+    # networks:
+    #   - sfp-internal
+    network_mode: host
 
-    # Expose port internally (not to host)
-    expose:
-      - "80"
+    # Expose port internally (not to host) - not needed in host mode
+    # expose:
+    #   - "80"
 
     # Resource limits (adjust based on your needs)
     deploy:
@@ -132,17 +118,18 @@ services:
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-production}
       # Backend URL used for Next.js rewrites in standalone mode
-      - BACKEND_URL=http://backend
+      - BACKEND_URL=http://localhost
       # Note: Deployment mode is AUTO-DETECTED by frontend
       # Standalone mode when APPWRITE_SITE_* variables are absent (default here)
 
-      # Ports exposed to host
-    ports:
-      - "${HOST_PORT:-8080}:3000"
+    # Network - use host mode to reach backend on host network
+    network_mode: host
+    # Ports exposed to host - not needed in host mode, frontend runs on port 3000
+    # ports:
+    #   - "${HOST_PORT:-8080}:3000"
 
-    # Network
-    networks:
-      - sfp-internal
+    # networks:
+    #   - sfp-internal
 
     # Resource limits
     deploy:
@@ -165,10 +152,10 @@ services:
     # Security options
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    # Disabled read_only for Next.js 16 standalone mode compatibility
+    # read_only: true
     tmpfs:
       - /tmp
-      - /app/.next
 
     # Labels
     labels:

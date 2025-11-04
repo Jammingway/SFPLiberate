@@ -1,0 +1,725 @@
+# ESPHome Proxy Implementation Plan
+
+**Epic:** ESPHome Bluetooth Proxy Integration
+**Status:** Planning
+**Start Date:** TBD
+**Target Completion:** 4 weeks
+**Owner:** TBD
+
+---
+
+## Overview
+
+This document provides a detailed, task-by-task implementation plan for the ESPHome Bluetooth Proxy feature as specified in [ESPHOME_PROXY_DESIGN.md](./ESPHOME_PROXY_DESIGN.md).
+
+---
+
+## Phase 1: Backend Foundation (Week 1)
+
+### 1.1 Project Setup
+
+**Estimated Time:** 2 hours
+
+- [ ] **Task:** Add dependencies to `backend/requirements.txt`
+  ```
+  aioesphomeapi==21.0.0
+  zeroconf==0.131.0
+  ```
+- [ ] **Task:** Update `backend/Dockerfile.new` if needed (ensure packages install cleanly)
+- [ ] **Task:** Create directory structure:
+  ```
+  backend/app/services/esphome/
+  ├── __init__.py
+  ├── proxy_service.py
+  ├── proxy_manager.py
+  ├── device_manager.py
+  ├── advertisement_handler.py
+  └── schemas.py
+  ```
+- [ ] **Task:** Add stub files with module docstrings
+- [ ] **Verification:** `docker-compose build backend` succeeds
+
+---
+
+### 1.2 Configuration Module
+
+**Estimated Time:** 2 hours
+
+- [ ] **Task:** Add ESPHome config to `backend/app/core/config.py`:
+  ```python
+  # ESPHome Bluetooth Proxy
+  ESPHOME_PROXY_MODE: bool = Field(default=False, env="ESPHOME_PROXY_MODE")
+  ESPHOME_DISCOVERY_TIMEOUT: int = Field(default=10, env="ESPHOME_DISCOVERY_TIMEOUT")
+  ESPHOME_CONNECTION_TIMEOUT: int = Field(default=30, env="ESPHOME_CONNECTION_TIMEOUT")
+  ESPHOME_SCAN_DURATION: int = Field(default=10, env="ESPHOME_SCAN_DURATION")
+  ESPHOME_RSSI_THRESHOLD: int = Field(default=-80, env="ESPHOME_RSSI_THRESHOLD")
+  ```
+- [ ] **Task:** Update `backend/.env.example` with new variables
+- [ ] **Task:** Add config validation (e.g., timeout > 0)
+- [ ] **Verification:** Config loads correctly, env vars parse
+
+**Files Changed:**
+- `backend/app/core/config.py`
+- `backend/.env.example`
+
+---
+
+### 1.3 Pydantic Schemas
+
+**Estimated Time:** 3 hours
+
+- [ ] **Task:** Implement all schemas in `backend/app/services/esphome/schemas.py`:
+  - `ESPHomeProxy`
+  - `DiscoveredDevice`
+  - `DeviceConnectionRequest`
+  - `DeviceConnectionResponse`
+  - `ESPHomeStatus`
+- [ ] **Task:** Add field validation (MAC address format, UUID format)
+- [ ] **Task:** Add computed fields (e.g., `signal_strength` from RSSI)
+- [ ] **Task:** Write unit tests: `backend/tests/services/esphome/test_schemas.py`
+- [ ] **Verification:** All tests pass
+
+**Files Created:**
+- `backend/app/services/esphome/schemas.py`
+- `backend/tests/services/esphome/test_schemas.py`
+
+---
+
+### 1.4 ProxyManager - mDNS Discovery
+
+**Estimated Time:** 6 hours
+
+- [ ] **Task:** Implement `ProxyManager.__init__()` with zeroconf setup
+- [ ] **Task:** Implement `discover_proxies()` with service browser
+- [ ] **Task:** Implement `_on_service_state_change()` callback for added/removed events
+- [ ] **Task:** Add logging for discovered/removed proxies
+- [ ] **Task:** Handle edge cases (no mDNS responders, network errors)
+- [ ] **Task:** Write unit tests with mocked zeroconf
+- [ ] **Verification:** Tests pass, manual test discovers real ESPHome device
+
+**Files Created:**
+- `backend/app/services/esphome/proxy_manager.py`
+- `backend/tests/services/esphome/test_proxy_manager.py`
+
+---
+
+### 1.5 ProxyManager - Connection
+
+**Estimated Time:** 8 hours
+
+- [ ] **Task:** Implement `connect_proxy()` using `aioesphomeapi.APIClient`
+- [ ] **Task:** Implement `connect_all()` to connect to all discovered proxies
+- [ ] **Task:** Implement `disconnect_proxy()` and `disconnect_all()`
+- [ ] **Task:** Add connection retry logic with exponential backoff
+- [ ] **Task:** Handle authentication (default password: "")
+- [ ] **Task:** Subscribe to BLE advertisements via `subscribe_bluetooth_le_advertisements()`
+- [ ] **Task:** Add connection state tracking (`connected: bool` per proxy)
+- [ ] **Task:** Write integration tests with mocked APIClient
+- [ ] **Verification:** Can connect to real ESPHome proxy, receives ads
+
+**Files Changed:**
+- `backend/app/services/esphome/proxy_manager.py`
+- `backend/tests/services/esphome/test_proxy_manager.py`
+
+---
+
+## Phase 2: Device Discovery (Week 2)
+
+### 2.1 AdvertisementHandler
+
+**Estimated Time:** 4 hours
+
+- [ ] **Task:** Implement `AdvertisementHandler.__init__()` with cache
+- [ ] **Task:** Implement `handle_advertisement()` with deduplication logic
+  - Cache key: `(mac_address, rssi)`
+  - Cache window: 2 seconds
+- [ ] **Task:** Implement SFP name filtering (case-insensitive "sfp" in name)
+- [ ] **Task:** Add cache cleanup (remove old entries periodically)
+- [ ] **Task:** Write unit tests with synthetic advertisements
+- [ ] **Verification:** Duplicates are filtered, SFP devices are detected
+
+**Files Created:**
+- `backend/app/services/esphome/advertisement_handler.py`
+- `backend/tests/services/esphome/test_advertisement_handler.py`
+
+---
+
+### 2.2 DeviceManager
+
+**Estimated Time:** 6 hours
+
+- [ ] **Task:** Implement `DeviceManager.__init__()` with device dict
+- [ ] **Task:** Implement `update_device()` to add/update discovered devices
+- [ ] **Task:** Implement RSSI tracking per proxy: `rssi_by_proxy: Dict[str, Dict[str, int]]`
+- [ ] **Task:** Implement `select_best_proxy()` to find proxy with highest RSSI for a MAC
+- [ ] **Task:** Implement `get_devices()` with last_seen filter (30 seconds)
+- [ ] **Task:** Add device expiration logic (remove stale devices)
+- [ ] **Task:** Write unit tests
+- [ ] **Verification:** Devices are tracked correctly, best proxy is selected
+
+**Files Created:**
+- `backend/app/services/esphome/device_manager.py`
+- `backend/tests/services/esphome/test_device_manager.py`
+
+---
+
+### 2.3 Integration: ProxyManager + AdvertisementHandler + DeviceManager
+
+**Estimated Time:** 4 hours
+
+- [ ] **Task:** Wire up advertisement callback chain:
+  - `ProxyManager.connect_proxy()` → `subscribe_bluetooth_le_advertisements(on_ad)`
+  - `on_ad()` → `AdvertisementHandler.handle_advertisement(ad, proxy_name)`
+  - `AdvertisementHandler` → `DeviceManager.update_device()`
+- [ ] **Task:** Add integration test with full pipeline
+- [ ] **Verification:** Ad from proxy → device in DeviceManager
+
+**Files Changed:**
+- `backend/app/services/esphome/proxy_manager.py`
+- `backend/tests/services/esphome/test_integration.py`
+
+---
+
+## Phase 3: GATT Connection (Week 2)
+
+### 3.1 ESPHomeProxyService - Core Service
+
+**Estimated Time:** 6 hours
+
+- [ ] **Task:** Implement `ESPHomeProxyService` singleton pattern
+- [ ] **Task:** Implement `__init__()` with component initialization
+  - `ProxyManager`
+  - `DeviceManager`
+  - `AdvertisementHandler`
+- [ ] **Task:** Implement `start()` method with discovery task
+- [ ] **Task:** Implement `stop()` method with cleanup
+- [ ] **Task:** Implement `_run_discovery()` loop (30s cycle)
+- [ ] **Task:** Add lifecycle logging
+- [ ] **Task:** Write unit tests
+- [ ] **Verification:** Service starts, discovers, and stops cleanly
+
+**Files Created:**
+- `backend/app/services/esphome/proxy_service.py`
+- `backend/tests/services/esphome/test_proxy_service.py`
+
+---
+
+### 3.2 GATT Connection Logic
+
+**Estimated Time:** 8 hours
+
+- [ ] **Task:** Implement `ESPHomeProxyService.connect_to_device(mac_address)`
+  - Call `DeviceManager.select_best_proxy(mac)`
+  - Get `APIClient` from `ProxyManager.get_client(proxy_name)`
+  - Call `client.bluetooth_device_connect(mac)`
+  - Call `client.bluetooth_gatt_get_services(mac)`
+  - Parse services/characteristics
+  - Call `client.bluetooth_device_disconnect(mac)`
+  - Return `DeviceConnectionResponse`
+- [ ] **Task:** Implement `_parse_gatt_services()` helper
+  - Find service with both `notify` and `write` characteristics
+  - Extract UUIDs
+  - Handle multiple services (prefer first match)
+- [ ] **Task:** Add error handling:
+  - Device not found
+  - No proxy available
+  - Connection timeout
+  - No suitable service found
+- [ ] **Task:** Write integration tests with mocked APIClient
+- [ ] **Verification:** Successfully retrieves UUIDs from real device
+
+**Files Changed:**
+- `backend/app/services/esphome/proxy_service.py`
+- `backend/tests/services/esphome/test_proxy_service.py`
+
+---
+
+## Phase 4: API Endpoints (Week 3)
+
+### 4.1 FastAPI Routes
+
+**Estimated Time:** 6 hours
+
+- [ ] **Task:** Create `backend/app/api/v1/esphome.py`
+- [ ] **Task:** Implement `GET /api/esphome/status`
+  - Check if `ESPHOME_PROXY_MODE=true`
+  - Return `ESPHomeStatus` with counts
+- [ ] **Task:** Implement `GET /api/esphome/proxies`
+  - Return list of `ESPHomeProxy` objects
+- [ ] **Task:** Implement `GET /api/esphome/devices` (SSE)
+  - Event stream with 1s interval
+  - Return JSON array of `DiscoveredDevice`
+- [ ] **Task:** Implement `POST /api/esphome/connect`
+  - Accept `DeviceConnectionRequest`
+  - Call `service.connect_to_device()`
+  - Return `DeviceConnectionResponse`
+- [ ] **Task:** Add dependency injection for `ESPHomeProxyService`
+- [ ] **Task:** Write API tests (pytest-asyncio + httpx)
+- [ ] **Verification:** All endpoints return 200, data is correct
+
+**Files Created:**
+- `backend/app/api/v1/esphome.py`
+- `backend/tests/api/v1/test_esphome.py`
+
+---
+
+### 4.2 Service Lifecycle Integration
+
+**Estimated Time:** 4 hours
+
+- [ ] **Task:** Add service startup to `backend/app/main.py`:
+  ```python
+  @app.on_event("startup")
+  async def startup_event():
+      if settings.ESPHOME_PROXY_MODE:
+          service = ESPHomeProxyService()
+          await service.start()
+
+  @app.on_event("shutdown")
+  async def shutdown_event():
+      if settings.ESPHOME_PROXY_MODE:
+          service = ESPHomeProxyService()
+          await service.stop()
+  ```
+- [ ] **Task:** Add conditional route registration (only if mode enabled)
+- [ ] **Task:** Add health check endpoint for ESPHome readiness
+- [ ] **Verification:** Service starts with backend, shutdowns cleanly
+
+**Files Changed:**
+- `backend/app/main.py`
+
+---
+
+### 4.3 OpenAPI Documentation
+
+**Estimated Time:** 2 hours
+
+- [ ] **Task:** Add endpoint descriptions, examples to all routes
+- [ ] **Task:** Add response models, error schemas
+- [ ] **Task:** Add tags for grouping in Swagger UI
+- [ ] **Task:** Test OpenAPI docs: `http://localhost:8080/api/docs`
+- [ ] **Verification:** API docs are complete and accurate
+
+**Files Changed:**
+- `backend/app/api/v1/esphome.py`
+
+---
+
+## Phase 5: Frontend Integration (Week 3-4)
+
+### 5.1 TypeScript Client
+
+**Estimated Time:** 4 hours
+
+- [ ] **Task:** Create `frontend/src/lib/esphome/esphomeTypes.ts`
+  - Define all TypeScript interfaces matching backend schemas
+  - Add utility types (e.g., `SignalStrength`)
+- [ ] **Task:** Create `frontend/src/lib/esphome/esphomeClient.ts`
+  - Implement `ESPHomeClient` class
+  - Methods: `getStatus()`, `getProxies()`, `subscribeToDevices()`, `connectToDevice()`
+- [ ] **Task:** Add SSE handling with reconnection logic
+- [ ] **Task:** Write unit tests (Vitest)
+- [ ] **Verification:** Client can call all API endpoints
+
+**Files Created:**
+- `frontend/src/lib/esphome/esphomeTypes.ts`
+- `frontend/src/lib/esphome/esphomeClient.ts`
+- `frontend/src/lib/esphome/__tests__/esphomeClient.test.ts`
+
+---
+
+### 5.2 Zustand State Store
+
+**Estimated Time:** 3 hours
+
+- [ ] **Task:** Create `frontend/src/lib/esphome/esphomeStore.ts`
+  - State: `devices`, `selectedMac`, `connecting`, `error`
+  - Actions: `setDevices()`, `selectDevice()`, `connect()`
+- [ ] **Task:** Integrate with `ESPHomeClient`
+- [ ] **Task:** Add persistence (optional, localStorage)
+- [ ] **Verification:** State updates correctly on device discovery
+
+**Files Created:**
+- `frontend/src/lib/esphome/esphomeStore.ts`
+
+---
+
+### 5.3 ESPHome Discovery Component
+
+**Estimated Time:** 8 hours
+
+- [ ] **Task:** Create `frontend/src/components/esphome/ESPHomeDiscovery.tsx`
+  - Subscribe to SSE device stream
+  - Display device list with RSSI signal bars
+  - Allow device selection
+  - Connect button
+- [ ] **Task:** Add loading states (scanning, connecting)
+- [ ] **Task:** Add error states (no proxies, connection failed)
+- [ ] **Task:** Add empty states (no devices found)
+- [ ] **Task:** Style with Tailwind + shadcn/ui
+- [ ] **Task:** Write component tests (React Testing Library)
+- [ ] **Verification:** Component renders, user can select and connect
+
+**Files Created:**
+- `frontend/src/components/esphome/ESPHomeDiscovery.tsx`
+- `frontend/src/components/esphome/__tests__/ESPHomeDiscovery.test.tsx`
+
+---
+
+### 5.4 Manual MAC Entry Component
+
+**Estimated Time:** 4 hours
+
+- [ ] **Task:** Create `frontend/src/components/esphome/ESPHomeManualInput.tsx`
+  - Text input with MAC address validation (format: `AA:BB:CC:DD:EE:FF`)
+  - Connect button
+  - Error display
+- [ ] **Task:** Add format helpers (e.g., auto-insert colons)
+- [ ] **Task:** Wire up to `ESPHomeClient.connectToDevice()`
+- [ ] **Task:** Write component tests
+- [ ] **Verification:** User can enter MAC and connect
+
+**Files Created:**
+- `frontend/src/components/esphome/ESPHomeManualInput.tsx`
+- `frontend/src/components/esphome/__tests__/ESPHomeManualInput.test.tsx`
+
+---
+
+### 5.5 Connection Flow Integration
+
+**Estimated Time:** 6 hours
+
+- [ ] **Task:** Update `frontend/src/components/ble/ConnectPanel.tsx`:
+  - Check if ESPHome mode is enabled (`/api/esphome/status`)
+  - Show mode selector: "Browser Bluetooth" vs "ESPHome Proxy"
+  - Conditionally render `ESPHomeDiscovery` or `DirectDiscovery`
+- [ ] **Task:** On successful ESPHome connection:
+  - Store UUIDs in profile (`saveActiveProfile()`)
+  - Switch to normal BLE connection flow
+- [ ] **Task:** Add fallback logic (if ESPHome fails, suggest browser BLE)
+- [ ] **Task:** Write E2E test for full flow
+- [ ] **Verification:** User can discover → connect → use device
+
+**Files Changed:**
+- `frontend/src/components/ble/ConnectPanel.tsx`
+
+---
+
+## Phase 6: Documentation & Migration (Week 4)
+
+### 6.1 ESPHome Setup Guide
+
+**Estimated Time:** 4 hours
+
+- [ ] **Task:** Create `docs/ESPHOME_SETUP_GUIDE.md`
+  - Prerequisites (ESP32 device, ESPHome installed)
+  - ESPHome configuration YAML example
+  - Flashing instructions
+  - Network setup (same LAN as Docker host)
+  - Verification steps (ping proxy, check mDNS)
+- [ ] **Task:** Add troubleshooting section
+- [ ] **Verification:** Guide is clear, user can follow
+
+**Files Created:**
+- `docs/ESPHOME_SETUP_GUIDE.md`
+
+---
+
+### 6.2 Docker Configuration Guide
+
+**Estimated Time:** 3 hours
+
+- [ ] **Task:** Update `docker-compose.yml` with ESPHome config example
+- [ ] **Task:** Document `network_mode: host` requirement
+- [ ] **Task:** Document security implications (port exposure)
+- [ ] **Task:** Add alternative setup (Avahi sidecar for bridge network)
+- [ ] **Task:** Update `docs/DOCKER_DEPLOYMENT.md`
+- [ ] **Verification:** User can configure Docker correctly
+
+**Files Changed:**
+- `docker-compose.yml` (comments)
+- `docs/DOCKER_DEPLOYMENT.md`
+
+---
+
+### 6.3 Migration Guide
+
+**Estimated Time:** 4 hours
+
+- [ ] **Task:** Create `docs/ESPHOME_MIGRATION_GUIDE.md`
+  - Section: "Migrating from Bleak BLE Proxy"
+  - Step-by-step migration instructions
+  - Rollback procedure
+  - Feature comparison table
+  - FAQ
+- [ ] **Task:** Add deprecation notice to `ble-proxy-service/README.md`
+- [ ] **Verification:** Existing users can migrate smoothly
+
+**Files Created:**
+- `docs/ESPHOME_MIGRATION_GUIDE.md`
+
+**Files Changed:**
+- `ble-proxy-service/README.md`
+
+---
+
+### 6.4 Update Core Documentation
+
+**Estimated Time:** 3 hours
+
+- [ ] **Task:** Update `CLAUDE.md` with ESPHome proxy architecture
+- [ ] **Task:** Update `README.md`:
+  - Add "ESPHome Proxy" section
+  - Update architecture diagram
+  - Link to setup guide
+- [ ] **Task:** Update `docs/ENVIRONMENT_VARIABLES.md` with new vars
+- [ ] **Task:** Update `CONTRIBUTING.md` with ESPHome dev setup
+- [ ] **Verification:** Documentation is consistent
+
+**Files Changed:**
+- `CLAUDE.md`
+- `README.md`
+- `docs/ENVIRONMENT_VARIABLES.md`
+- `CONTRIBUTING.md`
+
+---
+
+### 6.5 Demo & Tutorial Video
+
+**Estimated Time:** 4 hours
+
+- [ ] **Task:** Record screen capture:
+  - ESPHome proxy setup
+  - Docker configuration
+  - Device discovery
+  - Connection flow
+  - Success state
+- [ ] **Task:** Add voiceover or captions
+- [ ] **Task:** Upload to YouTube or embed in docs
+- [ ] **Verification:** Video is clear, under 10 minutes
+
+**Deliverables:**
+- Video file + link in README
+
+---
+
+## Phase 7: Testing & QA (Ongoing)
+
+### 7.1 Unit Tests
+
+**Estimated Coverage:** 80%+
+
+- [ ] Backend: All services, managers, handlers
+- [ ] Frontend: Client, store, components
+- [ ] Run: `pytest backend/tests` (backend) and `npm test` (frontend)
+
+---
+
+### 7.2 Integration Tests
+
+- [ ] Backend: Full discovery → connection flow
+- [ ] Frontend: E2E user flow (Playwright)
+- [ ] Docker: Build and run test
+
+---
+
+### 7.3 Manual Testing
+
+**Checklist:**
+
+- [ ] mDNS discovers real ESPHome proxy
+- [ ] BLE scan detects SFP device
+- [ ] RSSI-based proxy selection works
+- [ ] GATT connection retrieves correct UUIDs
+- [ ] Manual MAC entry works
+- [ ] SSE stream updates in real-time
+- [ ] Multiple proxies handled correctly
+- [ ] Zero proxies gracefully degraded
+- [ ] Browser BLE still works (not broken)
+- [ ] Documentation is accurate
+
+---
+
+## Phase 8: Deployment & Rollout
+
+### 8.1 Pre-release Checklist
+
+- [ ] All tests passing (CI green)
+- [ ] Documentation complete
+- [ ] Changelog updated
+- [ ] Version bump (semantic versioning)
+- [ ] Docker images built and pushed
+- [ ] Feature flag defaults to `false` (opt-in)
+
+---
+
+### 8.2 Release Plan
+
+1. **Alpha Release (v1.0.0-alpha.1):**
+   - Deploy to staging
+   - Internal testing
+   - Invite beta testers
+
+2. **Beta Release (v1.0.0-beta.1):**
+   - Public opt-in
+   - Gather feedback
+   - Fix bugs
+
+3. **Stable Release (v1.0.0):**
+   - Feature-complete
+   - All issues resolved
+   - Official announcement
+
+---
+
+## Metrics & Success Criteria
+
+### Development Metrics
+
+- [ ] Code coverage > 80%
+- [ ] All unit tests pass
+- [ ] Zero critical bugs
+- [ ] Documentation completeness score > 90%
+
+### User Metrics (Post-Launch)
+
+- [ ] ESPHome mode adoption rate
+- [ ] Average setup time < 15 minutes
+- [ ] User-reported issues < 5 per month
+- [ ] User satisfaction score > 4/5
+
+---
+
+## Risk Assessment
+
+| Risk | Impact | Likelihood | Mitigation |
+|------|--------|------------|------------|
+| mDNS doesn't work in all networks | High | Medium | Document network requirements, provide manual proxy entry |
+| ESPHome API changes break integration | High | Low | Pin aioesphomeapi version, add version checks |
+| Performance issues with many proxies | Medium | Low | Add connection limits, optimize polling |
+| Security concerns with host network | High | Medium | Clear documentation, recommend firewall rules |
+| User confusion (two proxy methods) | Medium | High | Clear UI, deprecation notices, migration guide |
+
+---
+
+## Dependencies & Blockers
+
+### External Dependencies
+
+- **ESPHome:** User must have configured proxies
+- **Network:** mDNS must be allowed (some corporate networks block it)
+- **Hardware:** ESP32 devices required for proxies
+
+### Internal Blockers
+
+- None identified (all tasks can proceed independently once Phase 1 is complete)
+
+---
+
+## Communication Plan
+
+### Stakeholder Updates
+
+- **Weekly:** Progress report in README or discussion thread
+- **Phase Completion:** Announce in Discord/Slack
+- **Beta Release:** Email to mailing list
+
+### Documentation Channels
+
+- **In-app:** Feature announcement banner
+- **Docs Site:** New section for ESPHome
+- **GitHub:** Issue tracker for bugs/feedback
+
+---
+
+## Post-Implementation
+
+### Maintenance Plan
+
+- Monitor error logs for ESPHome failures
+- Track mDNS discovery success rate
+- Gather user feedback via issues
+- Plan for ESPHome API version updates
+
+### Future Enhancements
+
+- **Phase 2.0:** Home Assistant integration
+- **Phase 2.1:** Multi-device support (parallel connections)
+- **Phase 2.2:** Proxy health monitoring dashboard
+- **Phase 2.3:** Auto-fallback between proxy methods
+
+---
+
+## Task Assignment Template
+
+Use this template for creating GitHub issues:
+
+```markdown
+**Title:** [Phase X.Y] Task Name
+
+**Description:**
+Brief description of the task.
+
+**Acceptance Criteria:**
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+**Files to Change:**
+- `path/to/file.py`
+
+**Estimated Time:** X hours
+
+**Dependencies:**
+- Depends on #123
+
+**Labels:** `esphome-proxy`, `phase-1`, `backend`
+```
+
+---
+
+## Appendix: Useful Commands
+
+### Backend Development
+
+```bash
+# Install dependencies
+cd backend
+pip install -r requirements.txt
+
+# Run tests
+pytest
+
+# Run backend locally
+uvicorn app.main:app --reload
+```
+
+### Frontend Development
+
+```bash
+# Install dependencies
+cd frontend
+npm install
+
+# Run dev server
+npm run dev
+
+# Run tests
+npm test
+```
+
+### Docker
+
+```bash
+# Build
+docker-compose build
+
+# Run
+ESPHOME_PROXY_MODE=true docker-compose up
+
+# View logs
+docker-compose logs -f backend
+```
+
+---
+
+**End of Implementation Plan**

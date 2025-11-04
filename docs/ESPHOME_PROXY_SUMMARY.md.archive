@@ -1,0 +1,332 @@
+# ESPHome Bluetooth Proxy - Executive Summary
+
+**Date:** 2025-01-03
+**Status:** Design Complete, Ready for Implementation
+**Priority:** High
+**Complexity:** Medium-High
+
+---
+
+## What We're Building
+
+A **zero-configuration Bluetooth proxy system** that allows SFPLiberate to discover and connect to SFP Wizard devices via ESPHome Bluetooth proxies on the local network, eliminating the need for direct BLE hardware access from Docker containers.
+
+---
+
+## Problem Solved
+
+### Current Pain Points
+
+| Problem | Impact | Users Affected |
+|---------|---------|----------------|
+| Docker BLE access requires complex host network setup | High | Self-hosted users |
+| Current Bleak proxy only works on Linux | High | Windows/macOS users |
+| iOS/Safari lack Web Bluetooth support | Critical | iOS users |
+| Single proxy = single point of failure | Medium | All proxy users |
+
+### Solution
+
+- **Automatic discovery** of ESPHome proxies via mDNS
+- **Multi-proxy support** with RSSI-based selection for best coverage
+- **Platform-agnostic** (no direct BLE hardware needed)
+- **Works with existing ESPHome devices** (Home Assistant users already have these)
+
+---
+
+## Key Features
+
+✅ **Zero-Config Discovery:** Automatically finds ESPHome proxies on LAN
+✅ **SFP Auto-Detection:** Scans for devices with "SFP" in broadcast name
+✅ **Manual Fallback:** User can enter MAC address if auto-discovery fails
+✅ **Smart Proxy Selection:** Uses closest proxy (best RSSI) for connections
+✅ **UUID Retrieval:** Connects via proxy to get GATT service/characteristic UUIDs
+✅ **Feature Flag:** Entire feature behind `ESPHOME_PROXY_MODE=true` (opt-in)
+
+---
+
+## Architecture At-a-Glance
+
+```
+┌─────────────────────┐
+│   Next.js Frontend  │ ← User selects device
+│   (Browser or iOS)  │
+└──────────┬──────────┘
+           │ REST + SSE
+           ▼
+┌─────────────────────┐
+│   FastAPI Backend   │ ← Manages proxy connections
+│  ESPHomeProxyService│
+└──────────┬──────────┘
+           │ mDNS + ESPHome Native API
+           ▼
+┌─────────────────────┐
+│  ESPHome Proxies    │ ← ESP32 devices on LAN
+│  (ESP32 + Bluetooth)│
+└──────────┬──────────┘
+           │ BLE
+           ▼
+    [SFP Devices]
+```
+
+---
+
+## Naming Conventions (Fixed)
+
+### Configuration
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `ESPHOME_PROXY_MODE` | boolean | Enable feature |
+| `ESPHOME_DISCOVERY_TIMEOUT` | 10 | mDNS discovery timeout (seconds) |
+| `ESPHOME_CONNECTION_TIMEOUT` | 30 | Proxy connection timeout (seconds) |
+
+### Backend (Python - snake_case)
+
+- Module: `backend/app/services/esphome/`
+- Service: `ESPHomeProxyService`
+- Managers: `ProxyManager`, `DeviceManager`
+
+### Frontend (TypeScript - camelCase)
+
+- Module: `frontend/src/lib/esphome/`
+- Client: `ESPHomeClient`
+- Components: `ESPHomeDiscovery.tsx`, `ESPHomeManualInput.tsx`
+
+### API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/esphome/status` | Check if mode is enabled |
+| GET | `/api/esphome/proxies` | List discovered proxies |
+| GET | `/api/esphome/devices` | SSE stream of devices |
+| POST | `/api/esphome/connect` | Connect and get UUIDs |
+
+---
+
+## Implementation Timeline
+
+| Phase | Duration | Focus |
+|-------|----------|-------|
+| **Phase 1** | Week 1 | Backend foundation (mDNS, config, schemas) |
+| **Phase 2** | Week 2 | Device discovery (ads, filtering, RSSI) |
+| **Phase 3** | Week 2 | GATT connection via proxy |
+| **Phase 4** | Week 3 | API endpoints (REST + SSE) |
+| **Phase 5** | Week 3-4 | Frontend (UI, SSE client, connection flow) |
+| **Phase 6** | Week 4 | Documentation & migration |
+
+**Total:** 4 weeks (estimated)
+
+---
+
+## Technical Dependencies
+
+### New Backend Dependencies
+
+```
+aioesphomeapi==21.0.0    # ESPHome Native API client
+zeroconf==0.131.0         # mDNS service discovery
+```
+
+### Docker Requirements
+
+**Critical:** Requires `network_mode: host` for mDNS to work.
+
+**Alternative:** Avahi sidecar container (for bridge network mode).
+
+### User Requirements
+
+- ESPHome Bluetooth proxy running on LAN (ESP32 device)
+- Same network as Docker host
+- mDNS enabled on network (not blocked by firewall)
+
+---
+
+## Migration Path
+
+### From: Bleak BLE Proxy (Current)
+
+```bash
+# Old setup (Linux-only, direct hardware)
+BLE_PROXY_ENABLED=true
+network_mode: bridge
+devices: [/dev/bus/usb]
+```
+
+### To: ESPHome Proxy (New)
+
+```bash
+# New setup (cross-platform, network-based)
+ESPHOME_PROXY_MODE=true
+network_mode: host  # Required for mDNS
+```
+
+### Rollback Plan
+
+If ESPHome proxy doesn't work:
+
+1. Set `ESPHOME_PROXY_MODE=false`
+2. Revert to `network_mode: bridge`
+3. Re-enable old Bleak proxy (if on Linux)
+
+---
+
+## Security Considerations
+
+### Network Exposure
+
+⚠️ **WARNING:** `network_mode: host` exposes all container ports to the host.
+
+**Mitigation:**
+- Document security implications
+- Recommend firewall rules
+- Provide alternative setup (Avahi sidecar)
+
+### Device Trust
+
+ESPHome proxies are discovered via mDNS (unauthenticated).
+
+**Mitigation:**
+- Verify ESPHome API handshake
+- Use authentication (default password: "")
+- Document: Only run on trusted networks
+
+### Data Privacy
+
+BLE MAC addresses are PII.
+
+**Mitigation:**
+- Don't persist MAC addresses to database
+- Don't log MACs unless debug mode
+- Clear discovery cache on shutdown
+
+---
+
+## Success Metrics
+
+### Development
+
+- [ ] Code coverage > 80%
+- [ ] All unit tests pass
+- [ ] Zero critical bugs
+- [ ] Documentation complete
+
+### User Adoption
+
+- [ ] Setup time < 15 minutes
+- [ ] ESPHome mode adoption > 30% of self-hosted users
+- [ ] User satisfaction > 4/5
+- [ ] Support tickets < 5/month
+
+---
+
+## Risk Assessment
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| mDNS blocked on network | High | Manual proxy entry UI |
+| ESPHome API changes | High | Pin dependency version |
+| User confusion (two proxy methods) | Medium | Clear docs + deprecation |
+| Performance (many proxies) | Low | Connection limits |
+
+---
+
+## Key Decisions Made
+
+### 1. Why ESPHome over Bleak?
+
+- **Cross-platform:** Works on any OS (no direct hardware)
+- **Existing hardware:** Many users already have ESPHome proxies
+- **Scalability:** Multiple proxies for better coverage
+- **Reliability:** ESP32 devices are stable, dedicated hardware
+
+### 2. Why mDNS over manual configuration?
+
+- **Zero-config:** No IP addresses to remember
+- **Dynamic:** Handles IP changes automatically
+- **Standard:** ESPHome already advertises via mDNS
+
+### 3. Why SSE over WebSocket for device stream?
+
+- **Simplicity:** One-way data (backend → frontend)
+- **Browser support:** Native EventSource API
+- **Reconnection:** Built-in automatic reconnection
+
+### 4. Why opt-in via feature flag?
+
+- **Safety:** Allows testing without affecting existing users
+- **Flexibility:** Users can choose method (browser vs proxy)
+- **Migration:** Gradual rollout, easy rollback
+
+---
+
+## Open Questions
+
+1. **Should we support password-protected ESPHome proxies?**
+   - Current: Assumes default "" password
+   - Future: Add `ESPHOME_PASSWORD` env var?
+
+2. **Should we auto-fallback if ESPHome fails?**
+   - Current: User manually switches to browser BLE
+   - Future: Automatically try browser BLE if no proxies found?
+
+3. **Should we cache discovered devices?**
+   - Current: Devices cleared on shutdown
+   - Future: Persist to localStorage for faster reconnect?
+
+4. **Home Assistant integration?**
+   - Current: Standalone ESPHome only
+   - Future: Also support HA's Bluetooth proxy API?
+
+---
+
+## Next Steps
+
+1. **Review & Approve Design:**
+   - Review `ESPHOME_PROXY_DESIGN.md`
+   - Address open questions
+   - Sign off on architecture
+
+2. **Create GitHub Issues:**
+   - Use `ESPHOME_PROXY_IMPLEMENTATION_PLAN.md`
+   - Break into individual issues per task
+   - Assign to team members
+
+3. **Setup Development Environment:**
+   - Acquire ESP32 device
+   - Flash ESPHome Bluetooth proxy firmware
+   - Configure test network
+
+4. **Begin Phase 1:**
+   - Install dependencies
+   - Create module structure
+   - Implement mDNS discovery
+
+---
+
+## References
+
+- **Design Specification:** [ESPHOME_PROXY_DESIGN.md](./ESPHOME_PROXY_DESIGN.md)
+- **Implementation Plan:** [ESPHOME_PROXY_IMPLEMENTATION_PLAN.md](./ESPHOME_PROXY_IMPLEMENTATION_PLAN.md)
+- **ESPHome Docs:** https://esphome.io/components/bluetooth_proxy.html
+- **aioesphomeapi:** https://github.com/esphome/aioesphomeapi
+
+---
+
+## Approval Checklist
+
+- [ ] Design reviewed by technical lead
+- [ ] Security implications understood
+- [ ] Timeline approved by product owner
+- [ ] Resources allocated (developers, hardware)
+- [ ] Documentation plan approved
+- [ ] Testing strategy approved
+
+---
+
+**Status:** 🟢 **Ready for Implementation**
+
+Once approved, create GitHub issues from the implementation plan and assign to developers.
+
+---
+
+**End of Summary**
