@@ -63,10 +63,18 @@ Backend Components (`backend/app/services/esphome/`):
 - `proxy_manager.py`: mDNS discovery and ESPHome Native API client lifecycle
 - `device_manager.py`: Device tracking with RSSI per proxy, best proxy selection
 - `proxy_service.py`: Singleton coordinator with advertisement deduplication
+- `connection_manager.py`: Persistent BLE device connections for ongoing communication
 - `schemas.py`: Pydantic models for ESPHome entities
+- `websocket_schemas.py`: WebSocket message schemas for BLE proxy communication
+
+Backend API Endpoints (`backend/app/api/v1/`):
+- `esphome.py`: REST API for discovery and status
+- `esphome_websocket.py`: WebSocket endpoint for full BLE communication
 
 Frontend Components (`frontend/src/`):
-- `lib/esphome/esphomeClient.ts`: API client with SSE subscription
+- `lib/esphome/esphomeClient.ts`: API client with SSE subscription (discovery)
+- `lib/esphome/esphomeWebSocketClient.ts`: WebSocket client for BLE communication
+- `lib/esphome/websocketAdapter.ts`: Adapter providing Web Bluetooth-like API
 - `lib/esphome/esphomeTypes.ts`: TypeScript interfaces and helpers
 - `components/esphome/ESPHomeDiscovery.tsx`: Discovery UI with auto-discovery and manual MAC entry
 - `components/ble/ConnectionModeSelector.tsx`: Updated to show ESPHome option when enabled
@@ -74,7 +82,8 @@ Frontend Components (`frontend/src/`):
 **API Endpoints:**
 - `GET /api/v1/esphome/status` - Service status and proxy/device counts
 - `GET /api/v1/esphome/devices` - SSE stream of discovered devices
-- `POST /api/v1/esphome/connect` - Connect to device and retrieve UUIDs
+- `POST /api/v1/esphome/connect` - Connect to device and retrieve UUIDs (discovery only)
+- `WS /api/v1/esphome/ws` - WebSocket for full BLE communication (connect, write, subscribe)
 
 **Docker Configuration:**
 - **Requires host networking** for both backend and frontend (mDNS + LAN access)
@@ -82,6 +91,8 @@ Frontend Components (`frontend/src/`):
 - Manual proxy configuration available for environments without mDNS
 
 **ESPHome Proxy Flow:**
+
+*Discovery (for browsers with Web Bluetooth):*
 1. Backend discovers ESPHome proxies via mDNS (automatic, continuous)
 2. Backend subscribes to BLE advertisements from all proxies
 3. Frontend connects to SSE stream → shows list of discovered SFP devices with signal strength
@@ -92,11 +103,25 @@ Frontend Components (`frontend/src/`):
 8. Frontend stores UUIDs in profile cache (localStorage)
 9. Future connections use cached UUIDs with direct Web Bluetooth (no re-discovery needed)
 
+*Full Communication via WebSocket (for Safari/iOS without Web Bluetooth):*
+1. Backend discovers ESPHome proxies via mDNS (automatic, continuous)
+2. Backend subscribes to BLE advertisements from all proxies
+3. Frontend connects to SSE stream → shows list of discovered SFP devices
+4. User selects ESPHome proxy mode → Frontend establishes WebSocket connection to backend
+5. Frontend sends connect message with MAC address (and optional UUIDs if cached)
+6. Backend selects best proxy, connects to device, discovers UUIDs if needed
+7. Backend maintains persistent connection to device via ESPHome proxy
+8. Frontend sends write commands via WebSocket → Backend forwards to device via ESPHome
+9. Device notifications are forwarded: Device → ESPHome → Backend → WebSocket → Frontend
+10. All BLE communication flows through WebSocket (no direct Web Bluetooth needed)
+
 **Key Design Decisions:**
 - **No authentication** for ESPHome proxies (assumes local trusted network)
 - **Fail fast** with 30s connection timeout (don't spam network)
 - **Multi-proxy support** with RSSI-based selection per device
-- **ESPHome is for UUID discovery only** - not used for ongoing device communication
+- **Dual mode operation**: UUID discovery for Web Bluetooth OR full BLE proxy for Safari/iOS
+- **WebSocket for full BLE communication** - persistent connection for write/notify operations
+- **Web Bluetooth-like API** - Frontend adapter provides familiar GATT-like interface
 - **10-second auto-discovery timeout** before showing manual MAC entry
 - **2-second advertisement deduplication** to reduce noise
 

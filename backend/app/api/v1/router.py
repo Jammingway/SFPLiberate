@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import esphome, health, modules, submissions
+from app.api.v1 import esphome, esphome_websocket, health, modules, submissions
 from app.config import get_settings
 
 api_router = APIRouter()
@@ -20,3 +20,4 @@ api_router.include_router(health.router, tags=["health"])
 # Include ESPHome proxy routes conditionally
 if settings.esphome_proxy_mode:
     api_router.include_router(esphome.router, tags=["esphome-proxy"])
+    api_router.include_router(esphome_websocket.router, prefix="/esphome", tags=["esphome-websocket"])

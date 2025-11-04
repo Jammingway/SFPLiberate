@@ -14,6 +14,7 @@ import {
 } from './store';
 import type { ConnectionMode, ResolvedMode, SfpProfile } from './types';
 import { connectDirect, isWebBluetoothAvailable, startNotifications, writeChunks, writeText } from './webbluetooth';
+import { ESPHomeAdapter } from '@/lib/esphome/websocketAdapter';
 
 const TESTED_FIRMWARE_VERSION = '1.0.10';
 
@@ -70,7 +71,7 @@ async function fetchWithRetry(
 export function resolveConnectionMode(selected: ConnectionMode): ResolvedMode {
   if (selected === 'web-bluetooth') return 'direct';
   if (selected === 'proxy') return 'proxy';
-  if (selected === 'esphome-proxy') return 'direct'; // ESPHome provides UUID discovery, connection is still direct
+  if (selected === 'esphome-proxy') return 'esphome-proxy'; // ESPHome WebSocket for full BLE communication
   // Auto
   if (isWebBluetoothAvailable()) return 'direct';
   if (BLEProxyClient.isAvailable()) return 'proxy';
@@ -97,6 +98,13 @@ export function handleDisconnection() {
   });
   listeners.length = 0;
 
+  // Clean up ESPHome adapter if present
+  if (active?.esphomeAdapter) {
+    active.esphomeAdapter.disconnect().catch(err => {
+      console.error('Error disconnecting ESPHome adapter:', err);
+    });
+  }
+
   // Clear active connection
   active = null;
 
@@ -120,6 +128,7 @@ export type ActiveConnection = {
   write?: any;
   notify?: any;
   proxy?: BLEProxyClient | null;
+  esphomeAdapter?: ESPHomeAdapter | null;
 };
 
 let active: ActiveConnection | null = null;
@@ -135,7 +144,9 @@ export async function connect(selected: ConnectionMode) {
     throw new Error('No BLE connection method available');
   }
 
-  return mode === 'proxy' ? connectViaProxy() : connectDirectMode();
+  if (mode === 'proxy') return connectViaProxy();
+  if (mode === 'esphome-proxy') return connectViaESPHomeProxy();
+  return connectDirectMode();
 }
 
 async function connectDirectMode() {
@@ -168,6 +179,43 @@ async function connectViaProxy() {
   await startNotifications(notifyCharacteristic, handleNotifications);
   setConnected(true);
   setConnectionType('Proxy (via Backend)');
+  await getDeviceVersion();
+  scheduleStatusMonitoring();
+  return device;
+}
+
+async function connectViaESPHomeProxy() {
+  const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';
+  const wsUrl = `${protocol}//${host}/api/v1/esphome/ws`;
+
+  logLine(`Connecting via ESPHome Proxy (${wsUrl})...`);
+  const adapter = new ESPHomeAdapter(wsUrl);
+  await adapter.connect();
+
+  const profile = requireProfile();
+  const device = await adapter.requestDevice({
+    macAddress: profile.deviceAddress || '',
+    serviceUUID: profile.serviceUuid,
+    notifyCharUUID: profile.notifyCharUuid,
+    writeCharUUID: profile.writeCharUuid,
+  });
+
+  const gatt = await device.gatt.connect();
+  const svc = await gatt.getPrimaryService(profile.serviceUuid);
+  const writeCharacteristic = await svc.getCharacteristic(profile.writeCharUuid);
+  const notifyCharacteristic = await svc.getCharacteristic(profile.notifyCharUuid);
+
+  active = {
+    mode: 'esphome-proxy',
+    write: writeCharacteristic,
+    notify: notifyCharacteristic,
+    esphomeAdapter: adapter
+  };
+
+  await startNotifications(notifyCharacteristic, handleNotifications);
+  setConnected(true);
+  setConnectionType('ESPHome Proxy (WebSocket)');
   await getDeviceVersion();
   scheduleStatusMonitoring();
   return device;

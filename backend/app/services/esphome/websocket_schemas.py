@@ -1,0 +1,112 @@
+"""WebSocket message schemas for ESPHome BLE proxy communication."""
+
+from enum import Enum
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class BLEMessageType(str, Enum):
+    """WebSocket message types for BLE proxy communication."""
+
+    # Client → Server
+    CONNECT = "connect"
+    DISCONNECT = "disconnect"
+    WRITE = "write"
+    SUBSCRIBE = "subscribe"
+    UNSUBSCRIBE = "unsubscribe"
+
+    # Server → Client
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    NOTIFICATION = "notification"
+    STATUS = "status"
+    ERROR = "error"
+
+
+# Client → Server Messages
+
+
+class BLEConnectMessage(BaseModel):
+    """Request to connect to a BLE device."""
+
+    type: str = Field(default=BLEMessageType.CONNECT, const=True)
+    mac_address: str = Field(..., description="Device MAC address")
+    service_uuid: Optional[str] = Field(None, description="Optional service UUID filter")
+    notify_char_uuid: Optional[str] = Field(None, description="Notify characteristic UUID")
+    write_char_uuid: Optional[str] = Field(None, description="Write characteristic UUID")
+
+
+class BLEDisconnectMessage(BaseModel):
+    """Request to disconnect from current device."""
+
+    type: str = Field(default=BLEMessageType.DISCONNECT, const=True)
+
+
+class BLEWriteMessage(BaseModel):
+    """Request to write data to a characteristic."""
+
+    type: str = Field(default=BLEMessageType.WRITE, const=True)
+    characteristic_uuid: str = Field(..., description="Target characteristic UUID")
+    data: str = Field(..., description="Base64-encoded data to write")
+    with_response: bool = Field(default=True, description="Wait for write confirmation")
+
+
+class BLESubscribeMessage(BaseModel):
+    """Request to subscribe to notifications from a characteristic."""
+
+    type: str = Field(default=BLEMessageType.SUBSCRIBE, const=True)
+    characteristic_uuid: str = Field(..., description="Characteristic UUID to subscribe to")
+
+
+class BLEUnsubscribeMessage(BaseModel):
+    """Request to unsubscribe from a characteristic."""
+
+    type: str = Field(default=BLEMessageType.UNSUBSCRIBE, const=True)
+    characteristic_uuid: str = Field(..., description="Characteristic UUID to unsubscribe from")
+
+
+# Server → Client Messages
+
+
+class BLEConnectedMessage(BaseModel):
+    """Notification that connection succeeded."""
+
+    type: str = Field(default=BLEMessageType.CONNECTED, const=True)
+    device_name: Optional[str] = Field(None, description="Device name")
+    device_address: str = Field(..., description="Device MAC address")
+    service_uuid: str = Field(..., description="Primary service UUID")
+    notify_char_uuid: str = Field(..., description="Notify characteristic UUID")
+    write_char_uuid: str = Field(..., description="Write characteristic UUID")
+    proxy_used: str = Field(..., description="ESPHome proxy name used")
+
+
+class BLEDisconnectedMessage(BaseModel):
+    """Notification that device disconnected."""
+
+    type: str = Field(default=BLEMessageType.DISCONNECTED, const=True)
+    reason: str = Field(..., description="Disconnect reason")
+
+
+class BLENotificationMessage(BaseModel):
+    """BLE characteristic notification received."""
+
+    type: str = Field(default=BLEMessageType.NOTIFICATION, const=True)
+    characteristic_uuid: str = Field(..., description="Source characteristic UUID")
+    data: str = Field(..., description="Base64-encoded notification data")
+
+
+class BLEStatusMessage(BaseModel):
+    """General status message."""
+
+    type: str = Field(default=BLEMessageType.STATUS, const=True)
+    connected: bool = Field(..., description="Connection status")
+    device_name: Optional[str] = Field(None, description="Connected device name")
+    message: str = Field(..., description="Status message")
+
+
+class BLEErrorMessage(BaseModel):
+    """Error message."""
+
+    type: str = Field(default=BLEMessageType.ERROR, const=True)
+    error: str = Field(..., description="Error description")
+    details: Optional[dict] = Field(None, description="Additional error details")
