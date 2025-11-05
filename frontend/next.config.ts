@@ -15,8 +15,13 @@ const withBundleAnalyzer = initializeBundleAnalyzer({
  * Supports two deployment modes:
  * 1. standalone: Docker deployment with API proxy (default)
  * 2. appwrite: Static export for Appwrite cloud hosting
+ *
+ * Deployment mode is automatically detected:
+ * - Appwrite Sites: Presence of APPWRITE_SITE_API_ENDPOINT
+ * - Standalone: Default (Docker deployment)
  */
-const deploymentMode = (process.env.DEPLOYMENT_MODE || process.env.NEXT_PUBLIC_DEPLOYMENT_MODE || 'standalone').toLowerCase();
+const isAppwriteSite = !!(process.env.APPWRITE_SITE_API_ENDPOINT || process.env.APPWRITE_SITE_PROJECT_ID);
+const deploymentMode = isAppwriteSite ? 'appwrite' : (process.env.DEPLOYMENT_MODE || 'standalone').toLowerCase();
 const isStandalone = deploymentMode === 'standalone';
 const isAppwrite = deploymentMode === 'appwrite';
 
