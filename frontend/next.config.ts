@@ -12,29 +12,36 @@ const withBundleAnalyzer = initializeBundleAnalyzer({
 /**
  * Multi-Mode Deployment Configuration
  *
- * Supports three deployment modes:
- * 1. standalone: Docker deployment with API proxy (default)
- * 2. homeassistant: Home Assistant add-on with ingress support
- * 3. appwrite: Static export for Appwrite cloud hosting
+ * Supports three deployment modes (all using SSR + unified API pattern):
+ * 1. standalone: Docker deployment with API proxy to FastAPI + SQLite
+ * 2. homeassistant: Home Assistant add-on with ingress and API proxy
+ * 3. appwrite: Appwrite Sites (SSR) with API proxy to Appwrite Functions
  *
  * Deployment mode is automatically detected:
- * - Appwrite Sites: Presence of APPWRITE_SITE_API_ENDPOINT
+ * - Appwrite Sites: Presence of APPWRITE_ENDPOINT or APPWRITE_PROJECT_ID
  * - Home Assistant: DEPLOYMENT_MODE=homeassistant
  * - Standalone: Default (Docker deployment)
+ *
+ * All modes use the same architecture:
+ * - Frontend: Next.js SSR (standalone output)
+ * - API Pattern: /api/* rewrites to backend
+ * - Zero code divergence between modes
  */
-const isAppwriteSite = !!(process.env.APPWRITE_SITE_API_ENDPOINT || process.env.APPWRITE_SITE_PROJECT_ID);
+const isAppwriteSite = !!(process.env.APPWRITE_ENDPOINT || process.env.APPWRITE_PROJECT_ID);
 const deploymentMode = isAppwriteSite ? 'appwrite' : (process.env.DEPLOYMENT_MODE || 'standalone').toLowerCase();
 const isStandalone = deploymentMode === 'standalone';
 const isHomeAssistant = deploymentMode === 'homeassistant';
 const isAppwrite = deploymentMode === 'appwrite';
 
+// Only standalone and HA modes need the appwrite stub (no direct SDK usage)
 const require = createRequire(import.meta.url);
 const standaloneAppwriteAlias = require.resolve('./src/lib/appwrite-standalone');
 
 // https://nextjs.org/docs/pages/api-reference/next-config-js
 const nextConfig: NextConfig = {
-    // Output mode: standalone for Docker/HA, export for Appwrite
-    output: (isStandalone || isHomeAssistant) ? 'standalone' : isAppwrite ? 'export' : undefined,
+    // Output mode: standalone (SSR) for ALL deployment modes
+    // This enables unified API pattern via rewrites
+    output: 'standalone',
 
     env: {
         NEXT_PUBLIC_DEPLOYMENT_MODE: deploymentMode,
@@ -52,28 +59,33 @@ const nextConfig: NextConfig = {
         },
     },
 
-    // Rewrites for standalone and HA modes (proxy /api to backend)
-    ...((isStandalone || isHomeAssistant) && {
-        async rewrites() {
-            // HA add-on uses localhost, standalone uses docker DNS
-            const backendUrl = isHomeAssistant
-                ? 'http://localhost:80'
-                : (process.env.BACKEND_URL || 'http://backend:80');
-            return [
-                {
-                    source: '/api/:path*',
-                    destination: `${backendUrl}/api/:path*`,
-                },
-            ];
-        },
-    }),
+    // Rewrites for ALL modes (unified API pattern)
+    // All modes proxy /api/* to their respective backends
+    async rewrites() {
+        // Determine backend URL based on deployment mode
+        let backendUrl: string;
 
-    // Image optimization disabled for static export
-    ...(isAppwrite && {
-        images: {
-            unoptimized: true,
-        },
-    }),
+        if (isHomeAssistant) {
+            // HA add-on: backend runs on localhost:80
+            backendUrl = 'http://localhost:80';
+        } else if (isAppwrite) {
+            // Appwrite: backend is an Appwrite Function (custom domain or auto URL)
+            backendUrl = process.env.BACKEND_URL || 'https://api.sfplib.com';
+        } else {
+            // Standalone: backend is Docker service on bridge network
+            backendUrl = process.env.BACKEND_URL || 'http://backend:80';
+        }
+
+        console.log(`[Next.js Config] Deployment mode: ${deploymentMode}`);
+        console.log(`[Next.js Config] Backend URL: ${backendUrl}`);
+
+        return [
+            {
+                source: '/api/:path*',
+                destination: `${backendUrl}/api/:path*`,
+            },
+        ];
+    },
 
     // Enable React strict mode
     reactStrictMode: true,

@@ -101,62 +101,80 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
         run: npm ci --legacy-peer-deps
 
-      - name: Build static export for Appwrite
+      - name: Build Next.js SSR for Appwrite Sites
         working-directory: ${{ env.FRONTEND_DIR }}
         env:
-          # Appwrite Configuration (auto-injected by Appwrite Sites in production)
-          # For manual workflow deployment, provide these from secrets:
-          APPWRITE_SITE_API_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
-          APPWRITE_SITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
-          
-          # Backend API URL (Appwrite Function endpoint)
-          APPWRITE_SITE_API_URL: ${{ secrets.PUBLIC_API_URL || 'https://api.sfpliberate.com' }}
-          
+          # Deployment mode (triggers SSR + API rewrites)
+          DEPLOYMENT_MODE: appwrite
+
+          # Appwrite Configuration (build-time fallbacks)
+          # Runtime: Appwrite Sites auto-injects APPWRITE_FUNCTION_API_ENDPOINT and APPWRITE_FUNCTION_PROJECT_ID
+          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT || secrets.APPWRITE_ENDPOINT_URL }}
+          APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
+
+          # Backend API URL (Appwrite Function with custom domain)
+          BACKEND_URL: ${{ secrets.BACKEND_URL || 'https://api.sfplib.com' }}
+
+          # Public URL (custom domain)
+          PUBLIC_URL: ${{ secrets.PUBLIC_URL || 'https://app.sfplib.com' }}
+
           # Feature flags (control feature visibility)
-          # These should match production environment variables in Appwrite Console
-          APPWRITE_SITE_ENABLE_AUTH: true
-          APPWRITE_SITE_ENABLE_WEB_BLUETOOTH: true
-          APPWRITE_SITE_ENABLE_BLE_PROXY: true
-          APPWRITE_SITE_ENABLE_COMMUNITY_FEATURES: true
-          
+          APPWRITE_ENABLE_AUTH: ${{ secrets.APPWRITE_ENABLE_AUTH || 'true' }}
+          APPWRITE_ENABLE_WEB_BLUETOOTH: ${{ secrets.APPWRITE_ENABLE_WEB_BLUETOOTH || 'true' }}
+          APPWRITE_ENABLE_BLE_PROXY: ${{ secrets.APPWRITE_ENABLE_BLE_PROXY || 'true' }}
+          APPWRITE_ENABLE_COMMUNITY_FEATURES: ${{ secrets.APPWRITE_ENABLE_COMMUNITY_FEATURES || 'true' }}
+
           # Build optimization
           NEXT_TELEMETRY_DISABLED: 1
           NODE_ENV: production
         run: |
-          echo "🏗️ Building Next.js static export for Appwrite..."
+          echo "🏗️ Building Next.js SSR (standalone) for Appwrite Sites..."
+          echo "  Mode: appwrite (SSR with API rewrites)"
+          echo "  Backend URL: https://api.sfplib.com"
           npm run build
           echo "✅ Build completed successfully"
 
       - name: Verify build output
         working-directory: ${{ env.FRONTEND_DIR }}
         run: |
-          if [ ! -d "out" ]; then
-            echo "❌ ERROR: Build output directory 'out' not found"
+          if [ ! -d ".next/standalone" ]; then
+            echo "❌ ERROR: Build output directory '.next/standalone' not found"
             exit 1
           fi
-          
+
           echo "📦 Build output summary:"
-          du -sh out/
-          find out -type f | wc -l | xargs echo "Total files:"
-          
-          # Check for critical files
-          critical_files=("out/index.html" "out/_next")
-          for file in "${critical_files[@]}"; do
-            if [ ! -e "$file" ]; then
-              echo "❌ ERROR: Critical file/directory missing: $file"
-              exit 1
-            fi
-          done
-          
+          du -sh .next/standalone/
+          find .next/standalone -type f | wc -l | xargs echo "Total files:"
+
+          # Check for critical files/directories
+          if [ ! -f ".next/standalone/server.js" ]; then
+            echo "❌ ERROR: Critical file missing: server.js"
+            exit 1
+          fi
+
+          if [ ! -d ".next/static" ]; then
+            echo "❌ ERROR: Critical directory missing: .next/static"
+            exit 1
+          fi
+
           echo "✅ Build output validation passed"
 
-      - name: Package build output
+      - name: Package build output for Appwrite Sites
         working-directory: ${{ env.FRONTEND_DIR }}
         run: |
-          echo "📦 Packaging build output..."
-          cd out
+          echo "📦 Packaging Next.js standalone build..."
+
+          # Create deployment structure
+          mkdir -p deploy
+          cp -r .next/standalone/* deploy/
+          cp -r .next/static deploy/.next/static
+          cp -r public deploy/public
+
+          # Package for upload
+          cd deploy
           tar --exclude code.tar.gz -czf ../code.tar.gz .
           cd ..
+
           echo "✅ Build packaged successfully"
           ls -lh code.tar.gz
 
@@ -164,7 +182,7 @@ jobs:
         id: deploy
         working-directory: ${{ env.FRONTEND_DIR }}
         env:
-          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT_URL }}
+          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT || secrets.APPWRITE_ENDPOINT_URL }}
           APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
           APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
           APPWRITE_SITE_ID: ${{ secrets.APPWRITE_SITE_ID }}
@@ -229,9 +247,10 @@ jobs:
           **Triggered by**: ${{ github.actor }}
           
           ### Build Configuration
-          - **Deployment Mode**: Appwrite (static export)
+          - **Deployment Mode**: Appwrite (SSR)
           - **Node Version**: ${{ env.NODE_VERSION }}
-          - **Next.js Output**: Static HTML/CSS/JS
+          - **Next.js Output**: Standalone (SSR)
+          - **API Pattern**: Unified rewrites to api.sfplib.com
           - **Authentication**: Enabled (Appwrite native)
           
           ### Features Enabled
@@ -241,8 +260,10 @@ jobs:
           - ✅ Appwrite Authentication
           
           ### Deployment Info
-          - **Appwrite Endpoint**: \`${{ secrets.APPWRITE_ENDPOINT_URL }}\`
+          - **Appwrite Endpoint**: \`${{ secrets.APPWRITE_ENDPOINT || secrets.APPWRITE_ENDPOINT_URL }}\`
           - **Project ID**: \`${{ secrets.APPWRITE_PROJECT_ID }}\`
+          - **Public URL**: https://app.sfplib.com
+          - **Backend API**: https://api.sfplib.com
           - **Deployment URL**: ${{ steps.deploy.outputs.url }}
           
           ### Next Steps
@@ -273,10 +294,12 @@ jobs:
           1. Check the logs above for error messages
           2. Verify GitHub Secrets are configured:
              - \`APPWRITE_API_KEY\`
-             - \`APPWRITE_ENDPOINT_URL\`
+             - \`APPWRITE_ENDPOINT\` (or \`APPWRITE_ENDPOINT_URL\`)
              - \`APPWRITE_PROJECT_ID\`
-             - \`APPWRITE_SITE_ID\` (get from Appwrite Console > Sites)
-          3. Ensure you're not deploying from main branch
+             - \`APPWRITE_SITE_ID\`
+             - \`BACKEND_URL\` (e.g., https://api.sfplib.com)
+             - \`PUBLIC_URL\` (e.g., https://app.sfplib.com)
+          3. Ensure backend Function is deployed to api.sfplib.com
           4. Check Appwrite project configuration
           5. See docs/APPWRITE_DEPLOYMENT.md for detailed guide
           
