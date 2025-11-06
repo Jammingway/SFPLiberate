@@ -103,18 +103,14 @@ APPWRITE_SITE_ENABLE_COMMUNITY_FEATURES=true
 
 **Environment Variables** (add in Sites → Settings → Environment Variables):
 
-```bash
 DEPLOYMENT_MODE=appwrite
 APPWRITE_ENDPOINT=https://nyc.cloud.appwrite.io/v1
 APPWRITE_PROJECT_ID=69078b02001266c5d333
 BACKEND_URL=https://api.sfplib.com
 PUBLIC_URL=https://app.sfplib.com
-NEXT_PUBLIC_APPWRITE_ENDPOINT=https://nyc.cloud.appwrite.io/v1
-NEXT_PUBLIC_APPWRITE_PROJECT_ID=69078b02001266c5d333
 NEXT_PUBLIC_DEPLOYMENT_MODE=appwrite
 NEXT_TELEMETRY_DISABLED=1
 NODE_ENV=production
-```
 
 **Custom Domain**:
 - Primary: `app.sfplib.com` (configured in Sites settings)
