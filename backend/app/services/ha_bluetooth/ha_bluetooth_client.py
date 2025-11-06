@@ -43,8 +43,8 @@ class HomeAssistantBluetoothClient:
         # Parse device patterns from env if provided as JSON array
         patterns_env = os.getenv("DEVICE_NAME_PATTERNS", '["SFP", "Wizard"]')
         try:
-            default_patterns = json.loads(patterns_env) if isinstance(patterns_env, str) else patterns_env
-        except json.JSONDecodeError:
+            default_patterns = json.loads(patterns_env)
+        except (json.JSONDecodeError, TypeError):
             default_patterns = ["SFP", "Wizard"]
 
         self.device_patterns = [p.lower() for p in (device_patterns or default_patterns)]
