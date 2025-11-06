@@ -1,0 +1,51 @@
+{
+  "$schema": "https://appwrite.io/schemas/appwrite.json",
+  "projectId": "69078b02001266c5d333",
+  "projectName": "sfpliberate",
+  "functions": [
+    {
+      "$id": "backend-api",
+      "name": "SFPLiberate Backend API",
+      "runtime": "python-3.12",
+      "path": "backend",
+      "entrypoint": "app/main.py",
+      "ignore": [
+        ".venv",
+        "__pycache__",
+        "*.pyc",
+        ".pytest_cache",
+        "htmlcov",
+        ".coverage",
+        "tests",
+        ".git",
+        ".gitignore",
+        "README.md"
+      ],
+      "execute": [
+        "any"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 30,
+      "enabled": true,
+      "logging": true,
+      "scopes": [
+        "databases.read",
+        "databases.write",
+        "storage.read",
+        "storage.write"
+      ],
+      "commands": "pip install -r requirements.txt",
+      "variables": {
+        "DEPLOYMENT_MODE": "appwrite",
+        "APPWRITE_ENDPOINT": "https://nyc.cloud.appwrite.io/v1",
+        "APPWRITE_DATABASE_ID": "sfpliberate",
+        "APPWRITE_COLLECTION_ID": "sfp_modules",
+        "APPWRITE_BUCKET_ID": "sfp_eeprom_data",
+        "LOG_LEVEL": "INFO",
+        "LOG_JSON": "true",
+        "ESPHOME_PROXY_MODE": "false"
+      }
+    }
+  ]
+}

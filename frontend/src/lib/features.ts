@@ -12,18 +12,20 @@ export type DeploymentMode = 'standalone' | 'appwrite';
 
 /**
  * Get Appwrite endpoint (cloud only)
- * Auto-injected by Appwrite Sites at build time
+ * Appwrite Sites auto-injects APPWRITE_FUNCTION_API_ENDPOINT at runtime
  */
 export function getAppwriteEndpoint(): string | undefined {
-  return process.env.APPWRITE_SITE_API_ENDPOINT;
+  return process.env.APPWRITE_FUNCTION_API_ENDPOINT ||
+         process.env.APPWRITE_ENDPOINT;
 }
 
 /**
  * Get Appwrite project ID (cloud only)
- * Auto-injected by Appwrite Sites at build time
+ * Appwrite Sites auto-injects APPWRITE_FUNCTION_PROJECT_ID at runtime
  */
 export function getAppwriteProjectId(): string | undefined {
-  return process.env.APPWRITE_SITE_PROJECT_ID;
+  return process.env.APPWRITE_FUNCTION_PROJECT_ID ||
+         process.env.APPWRITE_PROJECT_ID;
 }
 
 /**
@@ -60,7 +62,7 @@ export function isAppwrite(): boolean {
 export function isAuthEnabled(): boolean {
   // In Appwrite mode, check the feature flag (default true)
   if (isAppwrite()) {
-    return process.env.APPWRITE_SITE_ENABLE_AUTH !== 'false';
+    return process.env.APPWRITE_ENABLE_AUTH !== 'false';
   }
   // Standalone mode never has auth
   return false;
@@ -70,8 +72,8 @@ export function isAuthEnabled(): boolean {
  * Check if Web Bluetooth is enabled
  */
 export function isWebBluetoothEnabled(): boolean {
-  const envVar = isAppwrite() 
-    ? process.env.APPWRITE_SITE_ENABLE_WEB_BLUETOOTH 
+  const envVar = isAppwrite()
+    ? process.env.APPWRITE_ENABLE_WEB_BLUETOOTH
     : process.env.ENABLE_WEB_BLUETOOTH;
   return envVar !== 'false'; // Default true
 }
@@ -80,8 +82,8 @@ export function isWebBluetoothEnabled(): boolean {
  * Check if BLE Proxy mode is enabled
  */
 export function isBLEProxyEnabled(): boolean {
-  const envVar = isAppwrite() 
-    ? process.env.APPWRITE_SITE_ENABLE_BLE_PROXY 
+  const envVar = isAppwrite()
+    ? process.env.APPWRITE_ENABLE_BLE_PROXY
     : process.env.ENABLE_BLE_PROXY;
   return envVar !== 'false'; // Default true
 }
@@ -90,21 +92,23 @@ export function isBLEProxyEnabled(): boolean {
  * Check if community features are enabled
  */
 export function isCommunityFeaturesEnabled(): boolean {
-  const envVar = isAppwrite() 
-    ? process.env.APPWRITE_SITE_ENABLE_COMMUNITY_FEATURES 
+  const envVar = isAppwrite()
+    ? process.env.APPWRITE_ENABLE_COMMUNITY_FEATURES
     : process.env.ENABLE_COMMUNITY_FEATURES;
   return envVar === 'true'; // Default false
 }
 
 /**
- * Get API base URL based on deployment mode
+ * Get API base URL - unified across all deployment modes
+ *
+ * All modes use /api/* which is rewritten in next.config.ts:
+ * - Standalone: /api/* → http://backend:80/api/*
+ * - Home Assistant: /api/* → http://localhost:80/api/*
+ * - Appwrite: /api/* → https://api.sfplib.com/api/*
+ *
+ * This unified pattern eliminates code divergence between modes.
  */
 export function getApiUrl(): string {
-  if (isAppwrite()) {
-    // Appwrite deployment uses backend Function URL
-    return process.env.APPWRITE_SITE_API_URL || '';
-  }
-  // Standalone uses proxied API
   return '/api';
 }
 
@@ -150,14 +154,12 @@ export function validateEnvironment(): {
   // Validate Appwrite configuration (only if in Appwrite mode)
   if (mode === 'appwrite') {
     if (!getAppwriteEndpoint()) {
-      errors.push('APPWRITE_SITE_API_ENDPOINT is missing (should be auto-injected by Appwrite Sites)');
+      errors.push('APPWRITE_FUNCTION_API_ENDPOINT (auto-injected) or APPWRITE_ENDPOINT is missing');
     }
     if (!getAppwriteProjectId()) {
-      errors.push('APPWRITE_SITE_PROJECT_ID is missing (should be auto-injected by Appwrite Sites)');
+      errors.push('APPWRITE_FUNCTION_PROJECT_ID (auto-injected) or APPWRITE_PROJECT_ID is missing');
     }
-    if (!getApiUrl()) {
-      errors.push('APPWRITE_SITE_API_URL is required for backend Function URL');
-    }
+    // API URL is always /api (unified pattern), no validation needed
   }
 
   // Standalone mode always valid (uses defaults)
