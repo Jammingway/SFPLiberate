@@ -48,3 +48,6 @@ schema:
   device_name_patterns: [str]
   connection_timeout: int(10,120)?
   device_expiry_seconds: int(60,600)?
+
+# Image configuration
+image: "ghcr.io/josiah-nelson/sfpliberate-addon-{arch}"
