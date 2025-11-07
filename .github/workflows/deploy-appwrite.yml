@@ -166,6 +166,7 @@ jobs:
 
           # Create deployment structure
           mkdir -p deploy
+          mkdir -p deploy/.next
           cp -r .next/standalone/* deploy/
           cp -r .next/static deploy/.next/static
           cp -r public deploy/public
@@ -195,6 +196,7 @@ jobs:
           # Create deployment using Sites API
           node << 'EOF'
           const sdk = require('node-appwrite');
+          const { InputFile } = require('node-appwrite/inputFile');
           const fs = require('fs');
           
           const client = new sdk.Client()
@@ -208,7 +210,7 @@ jobs:
             try {
               console.log('� Uploading deployment...');
               
-              const code = sdk.InputFile.fromPath('./code.tar.gz', 'code.tar.gz');
+              const code = InputFile.fromPath('./code.tar.gz', 'code.tar.gz');
               
               const deployment = await sites.createDeployment({
                 siteId: process.env.APPWRITE_SITE_ID,
