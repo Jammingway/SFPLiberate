@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Client, Databases, Storage } from 'node-appwrite';
+import { Client, Databases, Storage, Permission, Role } from 'node-appwrite';
 
 const endpoint = process.env.APPWRITE_ENDPOINT;
 const projectId = process.env.APPWRITE_PROJECT_ID;
@@ -128,7 +128,10 @@ async function ensureBucket(bucketId, name, options = {}) {
 
 async function ensurePersonalCollection() {
   const { databaseId, personalCollectionId } = defaults;
-  await ensureCollection(databaseId, personalCollectionId, 'User Modules', true);
+  
+  // Collection-level permissions: No permissions needed (document security handles per-user access)
+  // Documents will have user-specific permissions set at creation time
+  await ensureCollection(databaseId, personalCollectionId, 'User Modules', true, []);
 
   await ensureStringAttribute(databaseId, personalCollectionId, 'name', 255, true);
   await ensureStringAttribute(databaseId, personalCollectionId, 'vendor', 100, false);
@@ -137,6 +140,8 @@ async function ensurePersonalCollection() {
   await ensureStringAttribute(databaseId, personalCollectionId, 'sha256', 64, true);
   await ensureStringAttribute(databaseId, personalCollectionId, 'eeprom_file_id', 64, true);
   await ensureIntegerAttribute(databaseId, personalCollectionId, 'size', true);
+  await ensureBooleanAttribute(databaseId, personalCollectionId, 'read_from_device', false);
+  await ensureStringAttribute(databaseId, personalCollectionId, 'community_module_ref', 64, false);
 
   await ensureIndex(databaseId, personalCollectionId, 'idx_sha256', 'unique', ['sha256']);
   await ensureIndex(databaseId, personalCollectionId, 'idx_created', 'key', ['$createdAt'], ['DESC']);
@@ -144,7 +149,18 @@ async function ensurePersonalCollection() {
 
 async function ensureCommunityCollection() {
   const { databaseId, communityCollectionId } = defaults;
-  await ensureCollection(databaseId, communityCollectionId, 'Community Modules', true);
+  
+  // Collection-level permissions: alpha and admin can read, only admin can create/update/delete
+  const communityPermissions = [
+    Permission.read(Role.label('alpha')),
+    Permission.read(Role.label('admin')),
+    Permission.create(Role.label('alpha')),
+    Permission.create(Role.label('admin')),
+    Permission.update(Role.label('admin')),
+    Permission.delete(Role.label('admin')),
+  ];
+  
+  await ensureCollection(databaseId, communityCollectionId, 'Community Modules', true, communityPermissions);
 
   await ensureStringAttribute(databaseId, communityCollectionId, 'name', 255, true);
   await ensureStringAttribute(databaseId, communityCollectionId, 'vendor', 100, false);
@@ -154,6 +170,8 @@ async function ensureCommunityCollection() {
   await ensureStringAttribute(databaseId, communityCollectionId, 'blobId', 64, true);
   await ensureStringAttribute(databaseId, communityCollectionId, 'photoId', 64, false);
   await ensureStringAttribute(databaseId, communityCollectionId, 'submittedBy', 64, false);
+  await ensureStringAttribute(databaseId, communityCollectionId, 'parent_user_module_id', 64, false);
+  await ensureStringAttribute(databaseId, communityCollectionId, 'device_timestamp', 64, false);
   await ensureStringAttribute(databaseId, communityCollectionId, 'linkType', 32, false);
   await ensureIntegerAttribute(databaseId, communityCollectionId, 'size', true);
   await ensureIntegerAttribute(databaseId, communityCollectionId, 'downloads', false);
@@ -170,32 +188,38 @@ async function main() {
   await ensurePersonalCollection();
   await ensureCommunityCollection();
 
-  // User bucket - private, file security enabled
+  // User bucket - private, file security enabled (document-level permissions set at creation)
   await ensureBucket(userBucketId, 'User EEPROM Data', {
     allowedFileExtensions: ['bin'],
     fileSecurity: true,
     maximumFileSize: 262144,
     encryption: true,
-    permissions: [],
+    permissions: [], // No bucket-level permissions (file-level permissions set at upload)
   });
   
-  // Community blob bucket - public reads, file security disabled
+  // Community blob bucket - public reads for alpha/admin, file security disabled
   await ensureBucket(blobBucketId, 'Community EEPROM Blobs', {
     allowedFileExtensions: ['bin'],
-    fileSecurity: false,
+    fileSecurity: false, // Bucket-level permissions (no per-file permissions)
     maximumFileSize: 262144,
     encryption: true,
-    permissions: ['read("any")'],
+    permissions: [
+      Permission.read(Role.label('alpha')),
+      Permission.read(Role.label('admin')),
+    ],
   });
   
-  // Community photo bucket - public reads, file security disabled
+  // Community photo bucket - public reads for alpha/admin, file security disabled
   await ensureBucket(photoBucketId, 'Community Module Photos', {
     allowedFileExtensions: ['jpg', 'jpeg', 'png', 'webp'],
-    fileSecurity: false,
+    fileSecurity: false, // Bucket-level permissions (no per-file permissions)
     maximumFileSize: 5242880, // 5 MB
     compression: 'gzip',
-    encryption: false,
-    permissions: ['read("any")'],
+    encryption: false, // Photos don't need encryption (better performance)
+    permissions: [
+      Permission.read(Role.label('alpha')),
+      Permission.read(Role.label('admin')),
+    ],
   });
 
   console.log('✅ Appwrite resources are provisioned.');

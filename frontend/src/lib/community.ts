@@ -8,11 +8,14 @@
 import { getAppwriteClient } from './auth';
 import { isAppwrite } from './features';
 import { appwriteResourceIds } from './appwrite/config';
+import { calculateSHA256 } from './sfp/parser';
 
 type AppwriteDatabases = import('appwrite').Databases;
 type AppwriteStorage = import('appwrite').Storage;
 type AppwriteQuery = typeof import('appwrite').Query;
 type AppwriteID = typeof import('appwrite').ID;
+type AppwritePermission = typeof import('appwrite').Permission;
+type AppwriteRole = typeof import('appwrite').Role;
 
 // Lazy-loaded Appwrite services
 let databasesService: AppwriteDatabases | null = null;
@@ -130,6 +133,9 @@ export interface ModuleSubmission {
 
 /**
  * List all community modules
+ * 
+ * Note: Access control is enforced via collection-level permissions in Appwrite.
+ * Collection should have read permissions set to Role.label('alpha') and Role.label('admin').
  */
 export async function listCommunityModules(): Promise<CommunityModule[]> {
     if (!isAppwrite()) {
@@ -182,9 +188,17 @@ export async function downloadModuleBlob(blobId: string): Promise<ArrayBuffer> {
 
     try {
         const storage = await getStorage();
-        const result = await storage.getFileDownload(BLOBS_BUCKET_ID, blobId);
-
-        return result as unknown as ArrayBuffer;
+        
+        // Get download URL (returns URL object)
+        const downloadUrl = storage.getFileDownload(BLOBS_BUCKET_ID, blobId);
+        
+        // Fetch the actual file data
+        const response = await fetch(downloadUrl.toString());
+        if (!response.ok) {
+            throw new Error(`Failed to download blob: ${response.statusText}`);
+        }
+        
+        return await response.arrayBuffer();
     } catch (error) {
         console.error('Failed to download module blob:', error);
         throw new Error('Failed to download module data');
@@ -222,6 +236,10 @@ export async function submitCommunityModule(submission: ModuleSubmission): Promi
         const databases = await getDatabases();
         const storage = await getStorage();
         const ID = await getID();
+        
+        // Get Permission and Role services
+        const appwrite = await import('appwrite');
+        const { Permission, Role } = appwrite;
 
         // Read EEPROM file as ArrayBuffer
         const eepromData = await submission.eepromFile.arrayBuffer();
@@ -243,10 +261,8 @@ export async function submitCommunityModule(submission: ModuleSubmission): Promi
         const serialBytes = new Uint8Array(eepromData, 68, 16);
         const serial = textDecoder.decode(serialBytes).trim();
 
-        // Calculate SHA256 hash
-        const hashBuffer = await crypto.subtle.digest('SHA-256', eepromData);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const sha256 = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+        // Calculate SHA256 hash using parser function
+        const sha256 = await calculateSHA256(eepromData);
 
         // Check for duplicate (same SHA256)
         const Query = await getQuery();
@@ -259,38 +275,52 @@ export async function submitCommunityModule(submission: ModuleSubmission): Promi
             throw new Error('This module already exists in the community database');
         }
 
-        // Upload EEPROM blob
+        // Define community permissions (alpha can read, admin can edit/delete)
+        const communityPermissions = [
+            Permission.read(Role.label('alpha')),
+            Permission.read(Role.label('admin')),
+            Permission.update(Role.label('admin')),
+            Permission.delete(Role.label('admin')),
+        ];
+
+        // Upload EEPROM blob with permissions
         const blobFile = new File([eepromBlob], `${sha256.substring(0, 16)}.bin`, {
             type: 'application/octet-stream',
         });
-        const blobUpload = await storage.createFile(BLOBS_BUCKET_ID, ID.unique(), blobFile);
+        const blobUpload = await storage.createFile(BLOBS_BUCKET_ID, ID.unique(), blobFile, communityPermissions);
 
         // Upload photo if provided
         let photoId: string | undefined;
         if (submission.photoFile) {
-            const photoUpload = await storage.createFile(PHOTOS_BUCKET_ID, ID.unique(), submission.photoFile);
+            const photoUpload = await storage.createFile(PHOTOS_BUCKET_ID, ID.unique(), submission.photoFile, communityPermissions);
             photoId = photoUpload.$id;
         }
 
-        // Create module document
-        const moduleDoc = await databases.createDocument(DATABASE_ID, MODULES_COLLECTION_ID, ID.unique(), {
-            name: submission.name,
-            vendor,
-            model,
-            serial: serial || undefined,
-            sha256,
-            size: eepromData.byteLength,
-            blobId: blobUpload.$id,
-            photoId,
-            comments: submission.comments || undefined,
-            wavelength: submission.wavelength,
-            maxDistance: submission.maxDistance,
-            linkType: submission.linkType,
-            formFactor: submission.formFactor,
-            connectorType: submission.connectorType,
-            verified: false, // Admin must verify
-            downloads: 0,
-        });
+        // Create module document with permissions
+        const moduleDoc = await databases.createDocument(
+            DATABASE_ID, 
+            MODULES_COLLECTION_ID, 
+            ID.unique(), 
+            {
+                name: submission.name,
+                vendor,
+                model,
+                serial: serial || undefined,
+                sha256,
+                size: eepromData.byteLength,
+                blobId: blobUpload.$id,
+                photoId,
+                comments: submission.comments || undefined,
+                wavelength: submission.wavelength,
+                maxDistance: submission.maxDistance,
+                linkType: submission.linkType,
+                formFactor: submission.formFactor,
+                connectorType: submission.connectorType,
+                verified: false, // Admin must verify
+                downloads: 0,
+            },
+            communityPermissions
+        );
 
 
         return moduleDoc as unknown as CommunityModule;
