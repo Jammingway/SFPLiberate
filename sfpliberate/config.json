@@ -51,7 +51,7 @@
     "connection_timeout": "int(10,120)",
     "device_expiry_seconds": "int(60,3600)",
     "scan_interval": "int(1,60)",
-    "rssi_threshold": "int(-100,-30)",
+    "rssi_threshold": "int",
     "max_devices": "int(10,200)",
     "bluetooth_adapter": "str",
     "enable_metrics": "bool",

@@ -70,4 +70,4 @@ schema:
   ble_trace_logging: bool
 
 # Image configuration
-image: "ghcr.io/Jammingway/sfpliberate-addon-{arch}"
+# image removed for build-from-source add-on
