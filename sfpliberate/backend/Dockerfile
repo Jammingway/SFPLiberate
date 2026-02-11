@@ -1,0 +1,51 @@
+# Multi-stage Docker build for production-ready backend
+
+# Builder stage
+ARG PYTHON_VERSION=3.14
+FROM python:${PYTHON_VERSION}-slim as builder
+
+ARG POETRY_VERSION=1.8.5
+ENV POETRY_VERSION=${POETRY_VERSION}
+
+WORKDIR /build
+
+# Install Poetry
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir "poetry==${POETRY_VERSION}"
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* ./
+
+# Export requirements (for faster subsequent builds)
+# Include ESPHome proxy extras
+RUN poetry export -f requirements.txt --output requirements.txt --without-hashes --extras esphome-proxy
+
+# Production stage
+FROM python:${PYTHON_VERSION}-slim
+
+WORKDIR /app
+
+# Copy requirements from builder
+COPY --from=builder /build/requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app ./app
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD python -c "import os, urllib.request; port=os.environ.get('PORT','80'); urllib.request.urlopen(f'http://localhost:{port}/health').read()" || exit 1
+
+# Default port
+ENV PORT=80
+
+# Expose port
+EXPOSE 80
+
+# Start server (database tables created via create_all on startup)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]
