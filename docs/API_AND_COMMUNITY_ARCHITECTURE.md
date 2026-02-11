@@ -464,7 +464,7 @@ community_modules (1) ──< (N) module_ratings
      }
    }
 3. User downloads JSON file
-4. User creates GitHub PR to josiah-nelson/SFPLiberate:
+4. User creates GitHub PR to Jammingway/SFPLiberate:
    - Path: `/community-modules/<sha256>.json`
    - Includes EEPROM data (base64) + metadata
 5. GitHub Actions validate submission:

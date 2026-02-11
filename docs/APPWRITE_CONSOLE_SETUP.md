@@ -58,7 +58,7 @@ Go to: **Settings → Git Repository**
 
 1. Click **"Connect Git"**
 2. Authorize GitHub
-3. Select repository: `josiah-nelson/SFPLiberate`
+3. Select repository: `Jammingway/SFPLiberate`
 4. Production branch: `main`
 5. Enable **Auto Deploy**: ✅
 

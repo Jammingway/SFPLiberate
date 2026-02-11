@@ -82,7 +82,7 @@ schema:
   device_expiry_seconds: int(60,600)?
 
 # Image configuration
-image: "ghcr.io/josiah-nelson/sfpliberate-addon-{arch}"
+image: "ghcr.io/Jammingway/sfpliberate-addon-{arch}"
 ```
 
 #### **run.sh** (Startup Script)

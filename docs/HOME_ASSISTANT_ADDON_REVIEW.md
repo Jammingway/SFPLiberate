@@ -230,7 +230,7 @@ homeassistant/config.json
     "connection_timeout": "int(10,120)?",
     "device_expiry_seconds": "int(60,600)?"
   },
-  "image": "ghcr.io/josiah-nelson/sfpliberate-addon-{arch}"
+  "image": "ghcr.io/Jammingway/sfpliberate-addon-{arch}"
 }
 ```
 
@@ -485,7 +485,7 @@ arch:
 
 **Docker Image Template:**
 ```yaml
-image: "ghcr.io/josiah-nelson/sfpliberate-addon-{arch}"
+image: "ghcr.io/Jammingway/sfpliberate-addon-{arch}"
 ```
 
 **Compliance:** ✅ Perfect

@@ -130,7 +130,7 @@ Cloud API Backend (sfpliberate-api.cloud)
 
 ## 📦 Deliverables
 
-1. **Docker Image:** `ghcr.io/josiah-nelson/sfpliberate-ble-proxy:latest`
+1. **Docker Image:** `ghcr.io/Jammingway/sfpliberate-ble-proxy:latest`
 2. **GitHub Repo:** New directory `ble-proxy-service/` in main repo
 3. **Frontend Settings Page:** Custom endpoint configuration UI
 4. **User Documentation:** README with setup guide

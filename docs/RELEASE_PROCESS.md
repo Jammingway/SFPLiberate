@@ -121,10 +121,10 @@ Before creating a release, ensure:
   - `armv7` (ARMv7 devices)
 - Pushes images to GHCR:
   ```
-  ghcr.io/josiah-nelson/sfpliberate-addon-aarch64:0.2.0
-  ghcr.io/josiah-nelson/sfpliberate-addon-amd64:0.2.0
-  ghcr.io/josiah-nelson/sfpliberate-addon-armhf:0.2.0
-  ghcr.io/josiah-nelson/sfpliberate-addon-armv7:0.2.0
+   ghcr.io/Jammingway/sfpliberate-addon-aarch64:0.2.0
+   ghcr.io/Jammingway/sfpliberate-addon-amd64:0.2.0
+   ghcr.io/Jammingway/sfpliberate-addon-armhf:0.2.0
+   ghcr.io/Jammingway/sfpliberate-addon-armv7:0.2.0
   ```
 
 ### 5. Availability

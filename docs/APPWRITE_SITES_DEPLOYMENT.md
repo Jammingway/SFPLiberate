@@ -253,7 +253,7 @@ This is the **recommended** approach for production deployments.
 3. Scroll to **"Git Repository"** section
 4. Click **"Connect Git"**
 5. Authorize Appwrite to access your GitHub account
-6. Select repository: `josiah-nelson/SFPLiberate`
+6. Select repository: `Jammingway/SFPLiberate`
 7. Configure Git integration:
    - **Production Branch**: `main`
    - **Root Directory**: `frontend`

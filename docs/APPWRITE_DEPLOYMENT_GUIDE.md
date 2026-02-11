@@ -172,7 +172,7 @@ appwrite deploy bucket
 
 1. Go to **Functions** → **Sites** in Appwrite Console
 2. Click **Add Site**
-3. Connect GitHub repository: `josiah-nelson/SFPLiberate`
+3. Connect GitHub repository: `Jammingway/SFPLiberate`
 4. Select branch: `claude/fix-conditional-imports-011CUp139rjmAWXzfiewN7iy` (or `main` after merge)
 5. Build Settings:
    - **Build Command**: `cd frontend && npm install && npm run build`
