@@ -58,7 +58,8 @@ export function ModulesTable({ initialData }: ModulesTableProps) {
   // Realtime updates in Appwrite mode
   useEffect(() => {
     if (!isAppwrite()) return;
-    type RealtimeSubscription = import('appwrite').RealtimeSubscription;
+    // Appwrite SDK types differ between releases; use any to avoid build-time type mismatch
+    type RealtimeSubscription = any;
     let subscription: RealtimeSubscription | undefined;
     (async () => {
       try {
