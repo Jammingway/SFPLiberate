@@ -167,7 +167,7 @@ ESPHOME_PROXY_MODE=false
 
 ### Option 1: Via GitHub Web UI
 
-1. Go to your repository: https://github.com/josiah-nelson/SFPLiberate
+1. Go to your repository: https://github.com/Jammingway/SFPLiberate
 2. Navigate to **Settings** → **Secrets and variables** → **Actions**
 3. For each secret that needs renaming:
    - Click **Add secret** with the new name

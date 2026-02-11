@@ -13,7 +13,7 @@ SFPLiberate is a companion web application for the **Ubiquiti SFP Wizard (UACC-S
 
 ```bash
 # Clone the repository
-git clone https://github.com/josiah-nelson/SFPLiberate.git
+git clone https://github.com/Jammingway/SFPLiberate.git
 cd SFPLiberate
 
 # Start the application

@@ -2,7 +2,7 @@
 
 **Status:** ✅ IMPLEMENTED
 **Date:** 2025-11-02
-**Issue:** https://github.com/josiah-nelson/SFPLiberate/issues/4
+**Issue:** https://github.com/Jammingway/SFPLiberate/issues/4
 
 ## Summary
 
@@ -266,7 +266,7 @@ If you encounter issues:
 2. Review browser console for detailed logs
 3. Verify BLE connection is stable
 4. Test with known-good modules first
-5. Report issues at: https://github.com/josiah-nelson/SFPLiberate/issues
+5. Report issues at: https://github.com/Jammingway/SFPLiberate/issues
 
 ## Conclusion
 

@@ -192,7 +192,7 @@ docker-compose logs -f backend     # View backend logs
 **Installation:**
 ```bash
 # Via "Add to Home Assistant" button in README
-# OR manually add repository: https://github.com/josiah-nelson/SFPLiberate
+# OR manually add repository: https://github.com/Jammingway/SFPLiberate
 ```
 
 **Environment:**

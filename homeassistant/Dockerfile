@@ -115,9 +115,9 @@ LABEL \
     org.opencontainers.image.vendor="SFPLiberate" \
     org.opencontainers.image.authors="Josiah Nelson" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.url="https://github.com/josiah-nelson/SFPLiberate" \
-    org.opencontainers.image.source="https://github.com/josiah-nelson/SFPLiberate" \
-    org.opencontainers.image.documentation="https://github.com/josiah-nelson/SFPLiberate/blob/main/docs/HOME_ASSISTANT.md" \
+    org.opencontainers.image.url="https://github.com/Jammingway/SFPLiberate" \
+    org.opencontainers.image.source="https://github.com/Jammingway/SFPLiberate" \
+    org.opencontainers.image.documentation="https://github.com/Jammingway/SFPLiberate/blob/main/docs/HOME_ASSISTANT.md" \
     org.opencontainers.image.version="${BUILD_VERSION}"
 
 # Start via s6-overlay (base image handles this)

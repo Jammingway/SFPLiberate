@@ -127,13 +127,13 @@ If you're migrating from the standalone Docker deployment:
 
 ## Support
 
-- **Documentation:** [GitHub Documentation](https://github.com/josiah-nelson/SFPLiberate/tree/main/docs)
-- **Issues:** [GitHub Issues](https://github.com/josiah-nelson/SFPLiberate/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/josiah-nelson/SFPLiberate/discussions)
+ - **Documentation:** [GitHub Documentation](https://github.com/Jammingway/SFPLiberate/tree/main/docs)
+ - **Issues:** [GitHub Issues](https://github.com/Jammingway/SFPLiberate/issues)
+ - **Discussions:** [GitHub Discussions](https://github.com/Jammingway/SFPLiberate/discussions)
 
 ## License
 
-MIT License - see [LICENSE](https://github.com/josiah-nelson/SFPLiberate/blob/main/LICENSE)
+MIT License - see [LICENSE](https://github.com/Jammingway/SFPLiberate/blob/main/LICENSE)
 
 ## Disclaimer
 

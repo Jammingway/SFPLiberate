@@ -392,7 +392,7 @@ boot: auto         # ✅ Start automatically on boot
 ```json
 {
   "name": "SFPLiberate Add-on Repository",
-  "url": "https://github.com/josiah-nelson/SFPLiberate",
+  "url": "https://github.com/Jammingway/SFPLiberate",
   "maintainer": "Josiah Nelson"
 }
 ```
@@ -406,7 +406,7 @@ boot: auto         # ✅ Start automatically on boot
 ```json
 {
   "name": "SFPLiberate Add-on Repository",
-  "url": "https://github.com/josiah-nelson/SFPLiberate",
+  "url": "https://github.com/Jammingway/SFPLiberate",
   "maintainer": "Josiah Nelson <josiah@example.com>"
 }
 ```
@@ -415,10 +415,10 @@ boot: auto         # ✅ Start automatically on boot
 ```json
 {
   "name": "SFPLiberate Add-on Repository",
-  "url": "https://github.com/josiah-nelson/SFPLiberate",
+  "url": "https://github.com/Jammingway/SFPLiberate",
   "maintainer": "Josiah Nelson <josiah@example.com>",
   "homeassistant": "2024.1.0",  // Minimum HA version
-  "documentation": "https://github.com/josiah-nelson/SFPLiberate/blob/main/docs/HOME_ASSISTANT.md"
+  "documentation": "https://github.com/Jammingway/SFPLiberate/blob/main/docs/HOME_ASSISTANT.md"
 }
 ```
 

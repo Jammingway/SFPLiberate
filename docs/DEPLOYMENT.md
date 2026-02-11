@@ -41,7 +41,7 @@ This guide covers **self-hosted full-stack deployment**. For other deployment mo
 
 ```bash
 # Clone repository
-git clone https://github.com/josiah-nelson/SFPLiberate.git
+git clone https://github.com/Jammingway/SFPLiberate.git
 cd SFPLiberate
 
 # Start production environment
@@ -628,7 +628,7 @@ Already configured in `.github/workflows/ci.yml`:
 
 ```bash
 # On your server
-git clone https://github.com/josiah-nelson/SFPLiberate.git
+git clone https://github.com/Jammingway/SFPLiberate.git
 cd SFPLiberate
 cp .env.example .env
 # Edit .env with production settings
@@ -668,8 +668,8 @@ deploy:
 
 ## Support
 
-- **Issues**: https://github.com/josiah-nelson/SFPLiberate/issues
-- **Discussions**: https://github.com/josiah-nelson/SFPLiberate/discussions
+- **Issues**: https://github.com/Jammingway/SFPLiberate/issues
+- **Discussions**: https://github.com/Jammingway/SFPLiberate/discussions
 - **Contributing**: See `CONTRIBUTING.md`
 
 ---

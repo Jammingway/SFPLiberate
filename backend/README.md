@@ -339,4 +339,4 @@ For backend issues:
 1. Check logs: `docker-compose logs backend`
 2. Verify environment variables: `docker-compose config`
 3. Review [troubleshooting section](#troubleshooting)
-4. Open issue on [GitHub](https://github.com/josiah-nelson/SFPLiberate/issues)
+4. Open issue on [GitHub](https://github.com/Jammingway/SFPLiberate/issues)

@@ -10,5 +10,5 @@ args:
 labels:
   org.opencontainers.image.title: "SFPLiberate"
   org.opencontainers.image.description: "Bluetooth companion for Ubiquiti SFP Wizard"
-  org.opencontainers.image.source: "https://github.com/josiah-nelson/SFPLiberate"
+  org.opencontainers.image.source: "https://github.com/Jammingway/SFPLiberate"
   org.opencontainers.image.licenses: "MIT"

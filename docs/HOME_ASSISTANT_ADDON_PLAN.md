@@ -39,7 +39,7 @@ name: "SFPLiberate"
 version: "1.0.0"
 slug: "sfpliberate"
 description: "Bluetooth companion for Ubiquiti SFP Wizard - capture, clone, and manage SFP module EEPROM profiles"
-url: "https://github.com/josiah-nelson/SFPLiberate"
+url: "https://github.com/Jammingway/SFPLiberate"
 arch:
   - aarch64
   - amd64
@@ -552,7 +552,7 @@ Create a **repository.json** file (for HA add-on repository):
 ```json
 {
   "name": "SFPLiberate Add-on Repository",
-  "url": "https://github.com/josiah-nelson/SFPLiberate",
+  "url": "https://github.com/Jammingway/SFPLiberate",
   "maintainer": "Josiah Nelson <josiah@example.com>"
 }
 ```
@@ -572,7 +572,7 @@ docker-compose up --build
 ### Home Assistant Add-On
 [![Add to Home Assistant](https://my.home-assistant.io/badges/supervisor_addon.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fjosiah-nelson%2FSFPLiberate)
 
-1. Click the button above (or add repository manually: `https://github.com/josiah-nelson/SFPLiberate`)
+1. Click the button above (or add repository manually: `https://github.com/Jammingway/SFPLiberate`)
 2. Install the "SFPLiberate" add-on
 3. Start the add-on
 4. Click "OPEN WEB UI"

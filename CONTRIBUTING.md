@@ -31,7 +31,7 @@ Thanks for your interest in contributing to SFPLiberate! We welcome contribution
 ### Quick Start
 ```bash
 # Clone the repository
-git clone https://github.com/josiah-nelson/SFPLiberate.git
+git clone https://github.com/Jammingway/SFPLiberate.git
 cd SFPLiberate
 
 # Start the full stack

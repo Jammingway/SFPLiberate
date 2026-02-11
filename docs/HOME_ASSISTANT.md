@@ -32,7 +32,7 @@ If the button doesn't work:
 
 1. Go to **Settings** → **Add-ons** → **Add-on Store**
 2. Click the **⋮** menu → **Repositories**
-3. Add: `https://github.com/josiah-nelson/SFPLiberate`
+3. Add: `https://github.com/Jammingway/SFPLiberate`
 4. Refresh the add-on store
 5. Find "SFPLiberate" and click **INSTALL**
 
@@ -424,9 +424,9 @@ The add-on communicates with:
 
 ## Support & Contributing
 
-- **Documentation:** [GitHub Docs](https://github.com/josiah-nelson/SFPLiberate/tree/main/docs)
-- **Issues:** [GitHub Issues](https://github.com/josiah-nelson/SFPLiberate/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/josiah-nelson/SFPLiberate/discussions)
+- **Documentation:** [GitHub Docs](https://github.com/Jammingway/SFPLiberate/tree/main/docs)
+- **Issues:** [GitHub Issues](https://github.com/Jammingway/SFPLiberate/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/Jammingway/SFPLiberate/discussions)
 - **Add-on Plan:** [Implementation Plan](HOME_ASSISTANT_ADDON_PLAN.md)
 
 ## Version History
