@@ -3,7 +3,13 @@
 # Get configuration from options.json
 export LOG_LEVEL=$(bashio::config 'log_level')
 export AUTO_DISCOVER=$(bashio::config 'auto_discover')
-export DEVICE_NAME_PATTERNS=$(bashio::config 'device_name_patterns' | jq -c '.')
+# Read device_name_patterns safely: bashio may return empty or null which breaks jq
+DEVICE_NAME_PATTERNS_RAW=$(bashio::config 'device_name_patterns' || echo '[]')
+if [ -z "${DEVICE_NAME_PATTERNS_RAW}" ] || [ "${DEVICE_NAME_PATTERNS_RAW}" = "null" ]; then
+    DEVICE_NAME_PATTERNS='[]'
+else
+    DEVICE_NAME_PATTERNS=$(echo "${DEVICE_NAME_PATTERNS_RAW}" | jq -c '.' 2>/dev/null || echo '[]')
+fi
 export CONNECTION_TIMEOUT=$(bashio::config 'connection_timeout')
 export DEVICE_EXPIRY_SECONDS=$(bashio::config 'device_expiry_seconds')
 export BLE_TRACE_LOGGING=$(bashio::config 'ble_trace_logging')
